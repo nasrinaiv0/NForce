@@ -1,10 +1,14 @@
 import { MutationCache, QueryCache, QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { addDays, type AttendanceEventType, type DateKey, type TimesheetAction, type UserId } from '@nforce/core';
 import { randomUUID } from 'expo-crypto';
+import { Platform } from 'react-native';
 
+import { activeWorkspace, backendStore, isLive } from '@/state/backend';
 import { preferencesStore } from '@/state/preferences';
+import { createLiveApi } from './liveApi';
 import { createMockApi } from './mockApi';
-import { ApiError, type AttendanceSnapshot, type EmployeeInput, type NewTaskInput, type OvertimeInput, type ReportScope, type TimeOffInput } from './types';
+import { supabase } from './supabase';
+import { ApiError, type AttendanceSnapshot, type EmployeeInput, type NForceApi, type NewTaskInput, type OvertimeInput, type ReportScope, type TimeOffInput } from './types';
 
 /**
  * Server-state layer (TanStack Query).
@@ -16,7 +20,25 @@ import { ApiError, type AttendanceSnapshot, type EmployeeInput, type NewTaskInpu
  *   retry after a timeout can never double-clock.
  */
 
-export const api = createMockApi({ getPersona: () => preferencesStore.get().persona });
+const demoApi = createMockApi({ getPersona: () => preferencesStore.get().persona });
+let live: { key: string; api: NForceApi } | undefined;
+
+/**
+ * The backend in use right now: the signed-in person's live workspace, or the
+ * demo organization. Screens never know which one they are talking to.
+ */
+export function currentApi(): NForceApi {
+  const state = backendStore.get();
+  const workspace = activeWorkspace(state);
+  if (!isLive() || state.userId === undefined || workspace === undefined) return demoApi;
+  const key = `${state.userId}|${workspace.organizationId}`;
+  if (live?.key !== key) live = { key, api: createLiveApi({ client: supabase(), workspace, userId: state.userId, source: Platform.OS === 'web' ? 'web' : 'mobile' }) };
+  return live.api;
+}
+
+export const api: NForceApi = new Proxy({} as NForceApi, {
+  get: (_target, property) => Reflect.get(currentApi(), property),
+});
 
 export const keys = {
   all: ['nforce'] as const,
@@ -132,6 +154,7 @@ export const useTeamSchedule = (from: DateKey, days: number, enabled = true) => 
   const to = addDays(from, days - 1);
   return useQuery({ queryKey: keys.roster(from, to), queryFn: () => api.teamSchedule(from, to), staleTime: 5 * 60_000, enabled });
 };
+export const useLeaveTypes = () => useQuery({ queryKey: [...keys.all, 'leave-types'] as const, queryFn: api.leaveTypes, staleTime: Infinity });
 export const useShifts = (from: DateKey, days: number) => {
   const to = addDays(from, days - 1);
   return useQuery({ queryKey: keys.shifts(from, to), queryFn: () => api.shifts(from, to), staleTime: 5 * 60_000 });

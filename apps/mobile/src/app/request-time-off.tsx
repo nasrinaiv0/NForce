@@ -11,8 +11,7 @@ import { RangeCalendar, type DateRange } from '@/components/RangeCalendar';
 import { Screen } from '@/components/Screen';
 import { Card } from '@/components/Surface';
 import { Text } from '@/components/Text';
-import { LEAVE_TYPES } from '@/data/mockApi';
-import { api, errorMessage, keys, useRequestTimeOff, useSession } from '@/data/queries';
+import { api, errorMessage, keys, useLeaveTypes, useRequestTimeOff, useSession } from '@/data/queries';
 import type { TimeOffInput } from '@/data/types';
 import { haptics } from '@/design/haptics';
 import { useTheme } from '@/design/theme';
@@ -29,7 +28,9 @@ export default function RequestTimeOff() {
   const initialStart = params.start !== undefined && isDateKey(params.start) && params.start >= today ? (params.start as DateKey) : undefined;
 
   const [kind, setKind] = useState<Kind>(params.kind === 'day_off' ? 'day_off' : 'leave');
-  const [leaveTypeId, setLeaveTypeId] = useState(LEAVE_TYPES[0]?.id ?? 'vacation');
+  const leaveTypes = useLeaveTypes().data ?? [];
+  const [chosenType, setLeaveTypeId] = useState<string | undefined>(undefined);
+  const leaveTypeId = chosenType ?? leaveTypes[0]?.id ?? 'vacation';
   const [range, setRange] = useState<DateRange>(initialStart !== undefined ? { start: initialStart } : {});
   const [halfDay, setHalfDay] = useState(false);
   const [note, setNote] = useState('');
@@ -37,7 +38,7 @@ export default function RequestTimeOff() {
 
   const end = range.end ?? range.start;
   const single = range.start !== undefined && end === range.start;
-  const policy = LEAVE_TYPES.find((l) => l.id === leaveTypeId);
+  const policy = leaveTypes.find((l) => l.id === leaveTypeId);
   const useHalfDay = kind === 'leave' && halfDay && single && policy?.allowHalfDays === true;
 
   const input: TimeOffInput | null =
@@ -92,7 +93,7 @@ export default function RequestTimeOff() {
         <View style={{ gap: t.space.sm }}>
           <Label text={i18n.t('timeoff.type')} />
           <View style={styles.chips}>
-            {LEAVE_TYPES.map((l) => (
+            {leaveTypes.map((l) => (
               <Chip key={l.id} label={l.name} selected={leaveTypeId === l.id} onPress={() => setLeaveTypeId(l.id)} />
             ))}
           </View>

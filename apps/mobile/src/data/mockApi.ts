@@ -106,11 +106,39 @@ import {
  * client changes no screen code.
  */
 
+/** Sheet workflow state kept per person and week. */
+export type SheetState = { status: TimesheetStatus; history: TimesheetTransitionRecord[]; version: number };
+
+/**
+ * A snapshot of one organization's data as the signed-in person may see it
+ * (row-level security already applied by the server). When given, the
+ * backend computes every view from it instead of generating demo data.
+ */
+export interface Dataset {
+  readonly organization: { readonly id: OrganizationId; readonly name: string; readonly timeZone: string };
+  readonly actorId: UserId;
+  readonly people: readonly DirectoryPerson[];
+  readonly offboarded: readonly UserId[];
+  readonly departments: Readonly<Record<string, string>>;
+  readonly events: readonly AttendanceEvent[];
+  readonly requests: readonly RequestRecord[];
+  readonly sheets: readonly { readonly userId: UserId; readonly periodStart: DateKey; readonly state: SheetState }[];
+  readonly balances: Readonly<Record<string, readonly LeaveBalance[]>>;
+  readonly policies: readonly LeavePolicy[];
+  readonly holidays: Readonly<Record<string, { readonly kind: HolidayKind; readonly name: string }>>;
+  readonly tasks: readonly Task[];
+  readonly lockedPeriods: readonly DateKey[];
+  readonly deals: readonly Deal[];
+  readonly audit: readonly { readonly id: string; readonly at: string; readonly actorId: UserId; readonly action: string; readonly detail: string }[];
+}
+
 export interface MockApiOptions {
   /** Demo profile; each maps to a different person in the hierarchy. */
   readonly getPersona: () => RoleTemplate;
   readonly now?: () => Date;
   readonly latencyMs?: number;
+  /** Real data to compute from (live mode). Omit for the generated demo organization. */
+  readonly dataset?: Dataset;
 }
 
 const ORG = OrganizationId('org_northwind');
@@ -130,7 +158,7 @@ const DEPARTMENT_NAMES: Readonly<Record<string, string>> = {
 const CX = TeamId('team_cx');
 const BILLING = TeamId('team_billing');
 
-interface DirectoryPerson extends Person {
+export interface DirectoryPerson extends Person {
   readonly role: RoleTemplate;
   readonly managerId?: UserId;
   readonly teamId?: TeamId;
@@ -236,7 +264,7 @@ const VIEW_PERMISSION: Readonly<Record<RequestKind, Permission>> = {
   correction: 'attendance.view',
 };
 
-interface RequestRecord {
+export interface RequestRecord {
   readonly id: string;
   readonly kind: RequestKind;
   readonly payload: RequestPayload;
@@ -253,9 +281,18 @@ export function createMockApi(options: MockApiOptions): NForceApi {
   let seq = 0;
   const nextId = (prefix: string) => `${prefix}_${(++seq).toString(36)}`;
 
+  // Organization settings: the demo organization, or the live dataset's.
+  const ds = options.dataset;
+  const ORG_ID = ds?.organization.id ?? ORG;
+  const ORG_NAME = ds?.organization.name ?? 'Northwind Logistics';
+  const ZONE = ds?.organization.timeZone ?? TZ;
+  const HOLIDAYS = ds?.holidays ?? DEMO_HOLIDAYS;
+  const LEAVE_POLICIES = ds?.policies ?? POLICIES;
+  const DEPARTMENTS = ds?.departments ?? DEPARTMENT_NAMES;
+
   /** Mutable copy: people can be added, edited and offboarded. */
-  const allPeople: DirectoryPerson[] = [...DIRECTORY];
-  const offboarded = new Set<UserId>();
+  const allPeople: DirectoryPerson[] = [...(ds?.people ?? DIRECTORY)];
+  const offboarded = new Set<UserId>(ds?.offboarded ?? []);
   const byId = new Map(allPeople.map((p) => [p.id, p]));
   const orgMembers = new Map<UserId, OrgMember>();
   const rebuildOrg = () => {
@@ -297,10 +334,10 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     return p;
   };
   const view = (p: DirectoryPerson): Person => ({ id: p.id, name: p.name, title: p.title, initials: p.initials, hue: p.hue });
-  const actor = (): DirectoryPerson => person(PERSONA_USER[options.getPersona()]);
+  const actor = (): DirectoryPerson => person(ds !== undefined ? ds.actorId : PERSONA_USER[options.getPersona()]);
   const subjectOf = (p: DirectoryPerson): Subject => ({
     userId: p.id,
-    organizationId: ORG,
+    organizationId: ORG_ID,
     status: offboarded.has(p.id) ? 'ended' : 'active',
     roles: [p.role],
     teamIds: p.teamId !== undefined ? [p.teamId] : [],
@@ -312,7 +349,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     return r.ok ? r.value : [];
   };
   const resourceOf = (p: DirectoryPerson): ResourceContext => ({
-    organizationId: ORG,
+    organizationId: ORG_ID,
     subjectUserId: p.id,
     departmentId: p.departmentId,
     managerChain: chainOf(p),
@@ -336,22 +373,22 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     if (!d.allowed) throw new ApiError('forbidden', `You don't have access to this (${d.reason}).`);
   };
 
-  const today = (): DateKey => localDateKey(now(), TZ);
-  const at = (date: DateKey, h: number, m: number) => instantFromZoned(date, h, m, TZ).toISOString();
+  const today = (): DateKey => localDateKey(now(), ZONE);
+  const at = (date: DateKey, h: number, m: number) => instantFromZoned(date, h, m, ZONE).toISOString();
   const weekStart = (d: DateKey) => addDays(d, 1 - isoWeekday(d));
   const ago = (minutes: number) => new Date(now().getTime() - minutes * 60_000).toISOString();
   const plusMinutes = (iso: string, minutes: number) => new Date(Date.parse(iso) + minutes * 60_000).toISOString();
   const payCtx = (p: DirectoryPerson): PayContext => ({
-    timeZone: TZ,
+    timeZone: ZONE,
     policy: PH_DEFAULT_PAY_POLICY,
     isRestDay: (d) => p.restDays.includes(isoWeekday(d)),
-    holidayOn: (d) => DEMO_HOLIDAYS[d]?.kind,
+    holidayOn: (d) => HOLIDAYS[d]?.kind,
   });
 
   // ------------------------------------------------------------ schedules
   const onLeave = new Set<string>(); // `${userId}|${date}`
   const isScheduled = (p: DirectoryPerson, d: DateKey) =>
-    !p.restDays.includes(isoWeekday(d)) && !onLeave.has(`${p.id}|${d}`) && DEMO_HOLIDAYS[d]?.kind !== 'regular';
+    !p.restDays.includes(isoWeekday(d)) && !onLeave.has(`${p.id}|${d}`) && HOLIDAYS[d]?.kind !== 'regular';
   const shiftWindow = (p: DirectoryPerson, d: DateKey) => {
     const endDate = p.shift.night === true ? addDays(d, 1) : d;
     return { start: at(d, p.shift.start[0], p.shift.start[1]), end: at(endDate, p.shift.end[0], p.shift.end[1]) };
@@ -362,7 +399,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
   const push = (p: DirectoryPerson, type: AttendanceEventType, occurredAt: string) => {
     if (Date.parse(occurredAt) > now().getTime()) return;
     const list = events.get(p.id) ?? [];
-    list.push({ id: nextId('evt'), idempotencyKey: nextId('seed'), organizationId: ORG, userId: p.id, type, occurredAt, source: 'mobile' });
+    list.push({ id: nextId('evt'), idempotencyKey: nextId('seed'), organizationId: ORG_ID, userId: p.id, type, occurredAt, source: 'mobile' });
     events.set(p.id, list);
   };
 
@@ -371,17 +408,19 @@ export function createMockApi(options: MockApiOptions): NForceApi {
   /** Nine full weeks of history feed reports and trends. */
   const HISTORY_WEEKS = 9;
   const historyStart = addDays(weekStart(seedToday), -7 * HISTORY_WEEKS);
-  onLeave.add(`u_nina|${seedToday}`);
   const historicalOvertime: { p: DirectoryPerson; date: DateKey; minutes: number }[] = [];
+  if (ds !== undefined) {
+    for (const e of [...ds.events].sort((x, y) => x.occurredAt.localeCompare(y.occurredAt))) events.set(e.userId, [...(events.get(e.userId) ?? []), e]);
+  } else onLeave.add(`u_nina|${seedToday}`);
 
-  for (const p of people()) {
+  for (const p of ds === undefined ? people() : []) {
     for (const d of dateRange(historyStart, seedToday)) {
       const key = `${p.id}|${d}`;
       const jitterIn = (Math.abs(hash(`${key}in`)) % 9) - 6; // −6…+2 min
       const jitterOut = Math.abs(hash(`${key}out`)) % 9; // 0…8 min
       // Older weeks: realistic sick days, no-shows, late arrivals and approved OT,
       // with punctuality improving over time (a trend worth reporting).
-      if (d < lastWeek && !p.restDays.includes(isoWeekday(d)) && DEMO_HOLIDAYS[d]?.kind !== 'regular') {
+      if (d < lastWeek && !p.restDays.includes(isoWeekday(d)) && HOLIDAYS[d]?.kind !== 'regular') {
         const h = Math.abs(hash(`${key}hist`));
         const weeksAgo = Math.floor((Date.parse(lastWeek) - Date.parse(d)) / (7 * 86_400_000));
         if ((p.role === 'staff' || p.role === 'supervisor') && h % 19 === 0) {
@@ -432,13 +471,14 @@ export function createMockApi(options: MockApiOptions): NForceApi {
   }
 
   const eventsOf = (id: UserId) => events.get(id) ?? [];
-  const replayOf = (id: UserId) => replayAttendance(eventsOf(id), { timeZone: TZ, now: now() });
+  const replayOf = (id: UserId) => replayAttendance(eventsOf(id), { timeZone: ZONE, now: now() });
 
   // ------------------------------------------------------------ tasks, balances
   const tasks = new Map<UserId, Task[]>();
   const tasksOf = (p: DirectoryPerson): Task[] => {
     const existing = tasks.get(p.id);
     if (existing !== undefined) return existing;
+    if (ds !== undefined) return [];
     const t = (title: string, priority: Task['priority'], due?: number, status: Task['status'] = 'todo', link?: Task['link']): Task => ({
       id: nextId('task'),
       title,
@@ -472,10 +512,13 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     return list;
   };
 
+  for (const task of ds?.tasks ?? []) tasks.set(task.assigneeId, [...(tasks.get(task.assigneeId) ?? []), task]);
+
   const balances = new Map<UserId, LeaveBalance[]>();
   const balancesOf = (p: DirectoryPerson): LeaveBalance[] => {
     const existing = balances.get(p.id);
     if (existing !== undefined) return existing;
+    if (ds !== undefined) return [...(ds.balances[p.id] ?? [])];
     const used = Math.abs(hash(p.id)) % 5;
     const list = [
       { leaveTypeId: 'vacation', name: 'Vacation', available: 12 - used - 0.5, entitled: 15, hue: 225 },
@@ -487,7 +530,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
   };
 
   // ------------------------------------------------------------ audit
-  const auditLog: { id: string; at: string; actorId: UserId; action: string; detail: string }[] = [];
+  const auditLog: { id: string; at: string; actorId: UserId; action: string; detail: string }[] = [...(ds?.audit ?? [])];
   const audit = (actorId: UserId, action: string, detail: string, at = now().toISOString()) =>
     auditLog.push({ id: nextId('aud'), at, actorId, action, detail });
 
@@ -508,6 +551,14 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       audit(UserId(by), `request.${decision}`, r.kind, when.toISOString());
     }
   };
+  if (ds !== undefined) {
+    for (const r of ds.requests) {
+      requests.push({ ...r });
+      // Approved leave and days off take people off the schedule.
+      const pl = r.payload;
+      if (r.state.status === 'approved' && (pl.kind === 'leave' || pl.kind === 'day_off')) for (const d of dateRange(pl.start, pl.end)) onLeave.add(`${r.state.requesterId}|${d}`);
+    }
+  }
   // Historical overtime: filed the next morning, decided along the chain within hours.
   for (const ot of historicalOvertime) {
     const filed = new Date(Date.parse(at(addDays(ot.date, 1), 9, 30)));
@@ -523,7 +574,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
   const leave = (start: number, end: number, type = 'vacation'): RequestPayload => ({
     kind: 'leave',
     leaveTypeId: type,
-    leaveType: POLICIES.find((x) => x.leaveTypeId === type)?.name ?? type,
+    leaveType: LEAVE_POLICIES.find((x) => x.leaveTypeId === type)?.name ?? type,
     start: addDays(seedToday, start),
     end: addDays(seedToday, end),
     days: end - start + 1,
@@ -536,23 +587,24 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     ...(note !== undefined ? { note } : {}),
   });
 
-  submit(P('u_jordan'), { kind: 'overtime', date: addDays(lastWeek, 1), minutes: 150, reason: 'Customer escalation backlog' }, ago(55));
-  submit(P('u_priya'), leave(8, 10), ago(95));
-  submit(P('u_diego'), { kind: 'correction', date: addDays(lastWeek, 4), requestedAt: at(addDays(lastWeek, 5), 7, 4), note: 'Forgot to clock out after the night shift' }, ago(130));
-  submit(P('u_priya'), { kind: 'overtime', date: addDays(lastWeek, 3), minutes: 225, reason: 'Month-end ticket surge' }, ago(200));
-  seedDecide(submit(P('u_aiko'), dayOff(12, 'Family event'), ago(320)), 'u_maya', 'approve');
-  submit(P('u_lea'), leave(15, 16), ago(240));
-  seedDecide(submit(P('u_omar'), { kind: 'overtime', date: addDays(lastWeek, 2), minutes: 120, reason: 'Invoice run' }, ago(400)), 'u_kenji', 'approve');
-  submit(P('u_kenji'), dayOff(6), ago(600));
-  submit(P('u_maya'), leave(20, 21), ago(700));
-  submit(P('u_elena'), leave(30, 32), ago(900));
-  const approvedDayOff = submit(P('u_jordan'), dayOff(10, 'Graduation'), ago(2880));
-  seedDecide(approvedDayOff, 'u_maya', 'approve');
-  seedDecide(approvedDayOff, 'u_elena', 'approve');
-  seedDecide(submit(P('u_nina'), leave(4, 5), ago(1500)), 'u_kenji', 'return', 'Overlaps with month-end close');
+  if (ds === undefined) {
+    submit(P('u_jordan'), { kind: 'overtime', date: addDays(lastWeek, 1), minutes: 150, reason: 'Customer escalation backlog' }, ago(55));
+    submit(P('u_priya'), leave(8, 10), ago(95));
+    submit(P('u_diego'), { kind: 'correction', date: addDays(lastWeek, 4), requestedAt: at(addDays(lastWeek, 5), 7, 4), note: 'Forgot to clock out after the night shift' }, ago(130));
+    submit(P('u_priya'), { kind: 'overtime', date: addDays(lastWeek, 3), minutes: 225, reason: 'Month-end ticket surge' }, ago(200));
+    seedDecide(submit(P('u_aiko'), dayOff(12, 'Family event'), ago(320)), 'u_maya', 'approve');
+    submit(P('u_lea'), leave(15, 16), ago(240));
+    seedDecide(submit(P('u_omar'), { kind: 'overtime', date: addDays(lastWeek, 2), minutes: 120, reason: 'Invoice run' }, ago(400)), 'u_kenji', 'approve');
+    submit(P('u_kenji'), dayOff(6), ago(600));
+    submit(P('u_maya'), leave(20, 21), ago(700));
+    submit(P('u_elena'), leave(30, 32), ago(900));
+    const approvedDayOff = submit(P('u_jordan'), dayOff(10, 'Graduation'), ago(2880));
+    seedDecide(approvedDayOff, 'u_maya', 'approve');
+    seedDecide(approvedDayOff, 'u_elena', 'approve');
+    seedDecide(submit(P('u_nina'), leave(4, 5), ago(1500)), 'u_kenji', 'return', 'Overlaps with month-end close');
+  }
 
   // ------------------------------------------------------------ timesheets
-  type SheetState = { status: TimesheetStatus; history: TimesheetTransitionRecord[]; version: number };
   const sheetState = new Map<string, SheetState>();
   const sheetKey = (id: UserId, start: DateKey) => `${id}|${start}`;
   const stateOf = (id: UserId, start: DateKey): SheetState => sheetState.get(sheetKey(id, start)) ?? { status: 'draft', history: [], version: 1 };
@@ -570,7 +622,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       });
     return {
       id: `ts_${p.id}_${start}`,
-      organizationId: ORG,
+      organizationId: ORG_ID,
       userId: p.id,
       ...(p.teamId !== undefined ? { teamId: p.teamId } : {}),
       departmentId: p.departmentId,
@@ -594,7 +646,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       const rs = overtimeRequests(p, day.date);
       const daySessions = sessions.filter((s: WorkSession) => s.workDate === day.date);
       const breakMinutes = daySessions.reduce((n, s) => n + Math.round(sessionTotals(s, now()).breakMs / 60_000), 0);
-      const holiday = DEMO_HOLIDAYS[day.date];
+      const holiday = HOLIDAYS[day.date];
       const firstIn = daySessions.map((s) => s.clockIn).sort()[0];
       const outs = daySessions.map((s) => s.clockOut);
       const lastOut = outs.includes(undefined) ? undefined : (outs as string[]).sort().at(-1);
@@ -616,7 +668,8 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       version: 2,
       history: [{ action: to === 'approved' ? 'approve' : 'submit', from: 'draft', to, by: UserId(by), at: ago(2000) }],
     });
-  for (const p of people()) {
+  for (const sh of ds?.sheets ?? []) sheetState.set(sheetKey(sh.userId, sh.periodStart), sh.state);
+  for (const p of ds === undefined ? people() : []) {
     if (!['u_sam', 'u_priya', 'u_diego'].includes(p.id)) seedSheet(p.id, 'approved', p.managerId ?? p.id);
     for (let w = 2; w <= HISTORY_WEEKS; w++) {
       sheetState.set(sheetKey(p.id, addDays(lastWeek, -7 * (w - 1))), {
@@ -626,9 +679,11 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       });
     }
   }
-  seedSheet('u_sam', 'submitted', 'u_sam');
-  const lockedPeriods = new Set<DateKey>(Array.from({ length: HISTORY_WEEKS - 1 }, (_, i) => addDays(lastWeek, -7 * (i + 1))));
-  submit(P('u_sam'), { kind: 'timesheet', periodStart: lastWeek, minutes: 40 * 60 + 35, overtimeMinutes: 35 }, ago(1440));
+  const lockedPeriods = new Set<DateKey>(ds?.lockedPeriods ?? Array.from({ length: HISTORY_WEEKS - 1 }, (_, i) => addDays(lastWeek, -7 * (i + 1))));
+  if (ds === undefined) {
+    seedSheet('u_sam', 'submitted', 'u_sam');
+    submit(P('u_sam'), { kind: 'timesheet', periodStart: lastWeek, minutes: 40 * 60 + 35, overtimeMinutes: 35 }, ago(1440));
+  }
 
   // ------------------------------------------------------------ views
   const stepViews = (s: ApprovalState): ApprovalStepView[] =>
@@ -641,7 +696,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     }));
 
   /** Organization owners (org.manage) may decide any request at any stage. */
-  const isOwner = (me: DirectoryPerson) => authorize(subjectOf(me), 'org.manage', { organizationId: ORG }, now()).allowed;
+  const isOwner = (me: DirectoryPerson) => authorize(subjectOf(me), 'org.manage', { organizationId: ORG_ID }, now()).allowed;
   const canDecideRecord = (r: RequestRecord, me: DirectoryPerson) =>
     r.state.status === 'pending' &&
     r.state.requesterId !== me.id &&
@@ -747,7 +802,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
   };
 
   const evaluate = (me: DirectoryPerson, input: TimeOffInput) => {
-    const base = { organizationId: ORG, userId: me.id, start: input.start, end: input.end };
+    const base = { organizationId: ORG_ID, userId: me.id, start: input.start, end: input.end };
     const existing = requests
       .filter((r) => r.state.requesterId === me.id && (r.state.status === 'pending' || r.state.status === 'approved'))
       .flatMap((r) => (r.payload.kind === 'leave' || r.payload.kind === 'day_off' ? [{ start: r.payload.start, end: r.payload.end }] : []));
@@ -755,7 +810,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       input.kind === 'day_off'
         ? ({ ...base, kind: 'day_off' } as const)
         : ({ ...base, kind: 'leave', leaveTypeId: input.leaveTypeId ?? '', ...(input.halfDay !== undefined ? { halfDay: input.halfDay } : {}) } as const);
-    const policy = POLICIES.find((p) => p.leaveTypeId === input.leaveTypeId);
+    const policy = LEAVE_POLICIES.find((p) => p.leaveTypeId === input.leaveTypeId);
     const balance = balancesOf(me).find((b) => b.leaveTypeId === input.leaveTypeId);
     const result = evaluateTimeOff(draft, {
       today: today(),
@@ -769,8 +824,8 @@ export function createMockApi(options: MockApiOptions): NForceApi {
 
 
   // ------------------------------------------------------------ reporting
-  const isWorkday = (p: DirectoryPerson, d: DateKey) => !p.restDays.includes(isoWeekday(d)) && DEMO_HOLIDAYS[d]?.kind !== 'regular';
-  const groupName = (p: DirectoryPerson) => p.teamName ?? DEPARTMENT_NAMES[p.departmentId] ?? p.departmentId;
+  const isWorkday = (p: DirectoryPerson, d: DateKey) => !p.restDays.includes(isoWeekday(d)) && HOLIDAYS[d]?.kind !== 'regular';
+  const groupName = (p: DirectoryPerson) => p.teamName ?? DEPARTMENTS[p.departmentId] ?? p.departmentId;
 
   /** One record per person per day: the single source for every attendance report. */
   const recordsFor = (p: DirectoryPerson, from: DateKey, to: DateKey): DayRecord[] => {
@@ -781,7 +836,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       const session = sessions.find((x) => x.workDate === d);
       const missed =
         session !== undefined && session.clockOut === undefined && replay.exceptions.some((x) => x.kind === 'missed_clock_out' && x.at === session.clockIn);
-      const holiday = DEMO_HOLIDAYS[d]?.kind;
+      const holiday = HOLIDAYS[d]?.kind;
       const c = classified.get(d);
       return buildDayRecord({
         userId: p.id,
@@ -807,7 +862,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     return Array.from({ length: n }, (_, i) => addDays(lastComplete, -7 * (n - 1 - i)));
   };
   const scopedPeople = (me: DirectoryPerson) => people().filter((p) => p.id !== me.id && can('attendance.view', p));
-  const hasOrgReports = (me: DirectoryPerson) => authorize(subjectOf(me), 'reports.organization', { organizationId: ORG }, now()).allowed;
+  const hasOrgReports = (me: DirectoryPerson) => authorize(subjectOf(me), 'reports.organization', { organizationId: ORG_ID }, now()).allowed;
 
   const approvalRecords = (people: readonly DirectoryPerson[]) => {
     const ids = new Set(people.map((p) => p.id));
@@ -848,13 +903,13 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       person: view(p),
       role: p.role,
       ...(p.teamName !== undefined ? { teamName: p.teamName } : {}),
-      department: DEPARTMENT_NAMES[p.departmentId] ?? p.departmentId,
+      department: DEPARTMENTS[p.departmentId] ?? p.departmentId,
       departmentKey: p.departmentId,
       ...(manager !== undefined ? { manager: view(manager) } : {}),
     };
   };
 
-  const deals: Deal[] = [
+  const deals: Deal[] = ds !== undefined ? [...ds.deals] : [
     ['Contact-center renewal', 'Meridian Telecom', 'proposal', 4_800_000_00, 12],
     ['Billing BPO expansion', 'Harbor Freight PH', 'negotiation', 2_350_000_00, 20],
     ['Night support pilot', 'Luzon Health', 'qualified', 950_000_00, 35],
@@ -889,7 +944,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         const manager = me.managerId !== undefined ? byId.get(me.managerId) : undefined;
         return {
           user: view(me),
-          organization: { id: ORG, name: 'Northwind Logistics', timeZone: TZ },
+          organization: { id: ORG_ID, name: ORG_NAME, timeZone: ZONE },
           role: me.role,
           ...(me.teamName !== undefined ? { teamName: me.teamName } : {}),
           ...(manager !== undefined ? { manager: view(manager) } : {}),
@@ -897,12 +952,12 @@ export function createMockApi(options: MockApiOptions): NForceApi {
           widgets: homeWidgets(s, now()),
           payPolicy: PH_DEFAULT_PAY_POLICY,
           reports: {
-            executive: authorize(s, 'reports.team', { organizationId: ORG, departmentId: me.departmentId }, now()).allowed,
+            executive: authorize(s, 'reports.team', { organizationId: ORG_ID, departmentId: me.departmentId }, now()).allowed,
             organization: hasOrgReports(me),
           },
           capabilities: {
-            managePeople: authorize(s, 'people.manage', { organizationId: ORG }, now()).allowed,
-            offboard: authorize(s, 'people.offboard', { organizationId: ORG }, now()).allowed,
+            managePeople: authorize(s, 'people.manage', { organizationId: ORG_ID }, now()).allowed,
+            offboard: authorize(s, 'people.offboard', { organizationId: ORG_ID }, now()).allowed,
             assignableRoles: assignableRoles(s, now()),
             approveAnything: isOwner(me),
             teamSchedule: grantScope(s, 'schedule.view', now()) !== 'self' && grantScope(s, 'schedule.view', now()) !== undefined,
@@ -921,8 +976,8 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       respond(() => {
         const me = actor();
         ensure('attendance.clock', me);
-        const candidate: AttendanceEvent = { id: nextId('evt'), idempotencyKey, organizationId: ORG, userId: me.id, type, occurredAt: now().toISOString(), source: 'mobile' };
-        const result = recordEvent(eventsOf(me.id), candidate, { timeZone: TZ, now: now() });
+        const candidate: AttendanceEvent = { id: nextId('evt'), idempotencyKey, organizationId: ORG_ID, userId: me.id, type, occurredAt: now().toISOString(), source: 'mobile' };
+        const result = recordEvent(eventsOf(me.id), candidate, { timeZone: ZONE, now: now() });
         if (!result.ok) throw new ApiError(result.error.code, result.error.message);
         if (!result.value.duplicate) {
           events.set(me.id, [...eventsOf(me.id), result.value.event]);
@@ -938,7 +993,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         return dateRange(from, to).flatMap((d): Shift[] => {
           if (!isScheduled(me, d)) return [];
           const w = shiftWindow(me, d);
-          const holiday = DEMO_HOLIDAYS[d];
+          const holiday = HOLIDAYS[d];
           const crew = people().filter((p) => p.id !== me.id && p.teamId !== undefined && p.teamId === me.teamId && isScheduled(p, d)).slice(0, 4);
           return [
             {
@@ -965,7 +1020,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         const visible = people().filter((p) => p.id === me.id || can('schedule.view', p));
         const rows = visible.map((p): RosterRow => {
           const cells = days.map((d) => {
-            const holiday = DEMO_HOLIDAYS[d];
+            const holiday = HOLIDAYS[d];
             let cell: RosterCell;
             if (onLeave.has(`${p.id}|${d}`)) cell = { kind: 'leave' };
             else if (holiday?.kind === 'regular' && !p.restDays.includes(isoWeekday(d))) cell = { kind: 'holiday', name: holiday.name };
@@ -1025,6 +1080,8 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         return balancesOf(me);
       }),
 
+    leaveTypes: () => respond(() => LEAVE_POLICIES.map((p) => ({ id: p.leaveTypeId, name: p.name, allowHalfDays: p.allowHalfDays }))),
+
     myRequests: () =>
       respond(() => {
         const me = actor();
@@ -1049,7 +1106,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
             : {
                 kind: 'leave',
                 leaveTypeId: input.leaveTypeId ?? '',
-                leaveType: POLICIES.find((p) => p.leaveTypeId === input.leaveTypeId)?.name ?? '',
+                leaveType: LEAVE_POLICIES.find((p) => p.leaveTypeId === input.leaveTypeId)?.name ?? '',
                 start: input.start,
                 end: input.end,
                 days: evaluation.days,
@@ -1130,7 +1187,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         if (approved && p.kind === 'correction') {
           events.set(requester.id, [
             ...eventsOf(requester.id),
-            { id: nextId('evt'), idempotencyKey: nextId('corr'), organizationId: ORG, userId: requester.id, type: 'clock_out', occurredAt: p.requestedAt, source: 'correction', note: p.note },
+            { id: nextId('evt'), idempotencyKey: nextId('corr'), organizationId: ORG_ID, userId: requester.id, type: 'clock_out', occurredAt: p.requestedAt, source: 'correction', note: p.note },
           ]);
         }
       }),
@@ -1251,7 +1308,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     executiveReport: ({ weeks = 4 } = {}) =>
       respond((): ExecutiveReport => {
         const me = actor();
-        if (!authorize(subjectOf(me), 'reports.team', { organizationId: ORG, departmentId: me.departmentId }, now()).allowed) {
+        if (!authorize(subjectOf(me), 'reports.team', { organizationId: ORG_ID, departmentId: me.departmentId }, now()).allowed) {
           throw new ApiError('forbidden', "You don't have access to executive reports.");
         }
         const org = hasOrgReports(me);
@@ -1310,7 +1367,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     directory: () =>
       respond(() => {
         const me = actor();
-        if (!authorize(subjectOf(me), 'people.directory', { organizationId: ORG }, now()).allowed) throw new ApiError('forbidden', "You don't have access to the directory.");
+        if (!authorize(subjectOf(me), 'people.directory', { organizationId: ORG_ID }, now()).allowed) throw new ApiError('forbidden', "You don't have access to the directory.");
         return people().map(directoryEntry);
       }),
 
@@ -1319,7 +1376,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       respond(() => {
         const me = actor();
         const s = subjectOf(me);
-        if (!authorize(s, 'people.manage', { organizationId: ORG }, now()).allowed) throw new ApiError('forbidden', "You can't add employees.");
+        if (!authorize(s, 'people.manage', { organizationId: ORG_ID }, now()).allowed) throw new ApiError('forbidden', "You can't add employees.");
         const assign = canAssignRole(s, input.role, { now: now() });
         if (!assign.allowed) throw new ApiError(assign.reason, 'You can only assign roles whose permissions you hold.');
         const name = input.name.trim();
@@ -1327,7 +1384,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         if (name.length < 2 || title.length < 2) throw new ApiError('invalid', 'Name and title are required.');
         const manager = person(input.managerId);
         if (offboarded.has(manager.id)) throw new ApiError('invalid', 'Choose an active manager.');
-        const departmentId = (Object.keys(DEPARTMENT_NAMES).find((k) => DEPARTMENT_NAMES[k] === input.department || k === input.department) ?? manager.departmentId) as DirectoryPerson['departmentId'];
+        const departmentId = (Object.keys(DEPARTMENTS).find((k) => DEPARTMENTS[k] === input.department || k === input.department) ?? manager.departmentId) as DirectoryPerson['departmentId'];
         const team = input.teamName !== undefined ? people().find((p) => p.teamName === input.teamName) : undefined;
         const p = mk(`u_${nextId('emp')}`, name, title, input.role, Math.abs(hash(name)) % 360, {
           departmentId,
@@ -1409,7 +1466,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     profile: (userId) =>
       respond((): PersonProfile => {
         const me = actor();
-        if (!authorize(subjectOf(me), 'people.directory', { organizationId: ORG }, now()).allowed) throw new ApiError('forbidden', "You don't have access to the directory.");
+        if (!authorize(subjectOf(me), 'people.directory', { organizationId: ORG_ID }, now()).allowed) throw new ApiError('forbidden', "You don't have access to the directory.");
         const p = person(userId);
         const isMe = p.id === me.id;
         const sees = (permission: Permission) => isMe || can(permission, p);
@@ -1504,18 +1561,18 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     payroll: (periodStart) =>
       respond((): PayrollView => {
         const me = actor();
-        if (!authorize(subjectOf(me), 'payroll.view', { organizationId: ORG }, now()).allowed) throw new ApiError('forbidden', "You don't have access to payroll.");
+        if (!authorize(subjectOf(me), 'payroll.view', { organizationId: ORG_ID }, now()).allowed) throw new ApiError('forbidden', "You don't have access to payroll.");
         const start = periodStart ?? lastWeek;
         const register = payrollFor(people(), start);
         const locked = lockedPeriods.has(start);
-        const canPrepare = authorize(subjectOf(me), 'payroll.prepare', { organizationId: ORG }, now()).allowed;
+        const canPrepare = authorize(subjectOf(me), 'payroll.prepare', { organizationId: ORG_ID }, now()).allowed;
         return { ...register, periodStart: start, periodEnd: addDays(start, 6), locked, canLock: canPrepare && register.ready && !locked };
       }),
 
     lockPayroll: (periodStart) =>
       respond(() => {
         const me = actor();
-        if (!authorize(subjectOf(me), 'payroll.prepare', { organizationId: ORG }, now()).allowed) throw new ApiError('forbidden', "You can't lock payroll periods.");
+        if (!authorize(subjectOf(me), 'payroll.prepare', { organizationId: ORG_ID }, now()).allowed) throw new ApiError('forbidden', "You can't lock payroll periods.");
         if (lockedPeriods.has(periodStart)) throw new ApiError('closed', 'This period is already locked.');
         const register = payrollFor(people(), periodStart);
         if (!register.ready) throw new ApiError('not_ready', `${register.blockers} employee(s) still block this period.`);
@@ -1535,7 +1592,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       respond((): AdminOverview => {
         const me = actor();
         const s = subjectOf(me);
-        if (!authorize(s, 'admin.roles', { organizationId: ORG }, now()).allowed && !authorize(s, 'admin.audit', { organizationId: ORG }, now()).allowed) {
+        if (!authorize(s, 'admin.roles', { organizationId: ORG_ID }, now()).allowed && !authorize(s, 'admin.audit', { organizationId: ORG_ID }, now()).allowed) {
           throw new ApiError('forbidden', "You don't have access to administration.");
         }
         return {
@@ -1544,7 +1601,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
             .sort((a, b) => b.at.localeCompare(a.at))
             .slice(0, 150)
             .map((e): AuditEntry => ({ id: e.id, at: e.at, actor: view(person(e.actorId)), action: e.action, detail: e.detail })),
-          holidays: Object.entries(DEMO_HOLIDAYS).map(([date, h]) => ({ date: date as DateKey, kind: h.kind, name: h.name })),
+          holidays: Object.entries(HOLIDAYS).map(([date, h]) => ({ date: date as DateKey, kind: h.kind, name: h.name })),
           payPolicy: PH_DEFAULT_PAY_POLICY,
         };
       }),
@@ -1552,14 +1609,14 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     deals: () =>
       respond(() => {
         const me = actor();
-        if (!authorize(subjectOf(me), 'crm.view', { organizationId: ORG }, now()).allowed) throw new ApiError('forbidden', "You don't have access to CRM.");
+        if (!authorize(subjectOf(me), 'crm.view', { organizationId: ORG_ID }, now()).allowed) throw new ApiError('forbidden', "You don't have access to CRM.");
         return deals;
       }),
 
     moveDeal: (id, stage, reason) =>
       respond(() => {
         const me = actor();
-        if (!authorize(subjectOf(me), 'crm.manage', { organizationId: ORG }, now()).allowed) throw new ApiError('forbidden', 'You can view the pipeline but not change it.');
+        if (!authorize(subjectOf(me), 'crm.manage', { organizationId: ORG_ID }, now()).allowed) throw new ApiError('forbidden', 'You can view the pipeline but not change it.');
         const i = deals.findIndex((d) => d.id === id);
         const deal = deals[i];
         if (deal === undefined) throw new ApiError('not_found', 'That deal no longer exists.');
@@ -1592,7 +1649,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         }
         const missed = replayOf(me.id).exceptions.filter((x) => x.kind === 'missed_clock_out');
         for (const x of missed) out.push({ id: `miss_${x.at}`, kind: 'missed_punch', at: x.at, read: false, params: { at: x.at }, href: '/clock' });
-        if (authorize(subjectOf(me), 'payroll.prepare', { organizationId: ORG }, now()).allowed) {
+        if (authorize(subjectOf(me), 'payroll.prepare', { organizationId: ORG_ID }, now()).allowed) {
           const reg = payrollFor(people(), lastWeek);
           if (!lockedPeriods.has(lastWeek)) out.push({ id: `pay_${lastWeek}_${reg.blockers}`, kind: 'payroll_ready', at: at(weekStart(today()), 7, 0), read: false, params: { blockers: String(reg.blockers), period: lastWeek }, href: '/more/payroll' });
         }
@@ -1609,7 +1666,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     teamPulse: () =>
       respond(() => {
         const me = actor();
-        if (!authorize(subjectOf(me), 'reports.team', { organizationId: ORG, departmentId: me.departmentId }, now()).allowed) {
+        if (!authorize(subjectOf(me), 'reports.team', { organizationId: ORG_ID, departmentId: me.departmentId }, now()).allowed) {
           throw new ApiError('forbidden', "You don't have access to team reports.");
         }
         // Person-level scope when granted; otherwise an org-wide aggregate (counts only).

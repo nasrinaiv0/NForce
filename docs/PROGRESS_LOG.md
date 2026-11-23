@@ -76,6 +76,29 @@ This log records meaningful project progress. Update it in the same pull request
 - **Known gaps:** The master is a JPEG; a vector (SVG/PDF) original is still preferred for print and store marketing. Not checked on physical devices or launchers.
 - **Next steps:** Add the vector master when available and re-run the generator.
 
+## 2026-11-23 — Live mode: Supabase Auth, workspaces and the live data client
+
+- **PR / issue:** #2.
+- **Status:** Implemented and tested against a simulated Supabase client. **Not yet verified against the hosted project**: access is still pending, and the database migrations are not applied there.
+- **Summary:**
+  - Sign in, create account (with email confirmation), password reset and sign out with Supabase Auth.
+  - Workspace setup for new accounts; workspace switcher under More → Account; demo still one tap away.
+  - Live data client (`liveDataset.ts`, `liveApi.ts`). Database rows are paged and mapped into the same snapshot the demo backend uses, so every screen works unchanged. Writes go through the database functions with matching arguments, and database errors map to app error codes.
+  - The demo backend can now compute from a supplied dataset; demo behavior is unchanged (all earlier tests pass).
+  - Leave types now come from the API. Adding an employee in live mode asks for their NForce account email.
+  - Configuration through `EXPO_PUBLIC_SUPABASE_URL` / `EXPO_PUBLIC_SUPABASE_KEY` (`apps/mobile/.env.example`). Without them, the app runs the demo.
+- **Bugs found and fixed during this work:**
+  - The guarded home route rendered a blank page on first load instead of redirecting to sign-in. Fixed with an explicit redirect.
+  - The More screen looped forever in demo mode: a selector returned a new empty array on each read (React error #185). Fixed.
+- **Validation performed (2026-11-23):**
+  - `npm run typecheck` and `npm run lint` passed.
+  - Core 147 tests passed; app **146 tests** passed (14 new live-client tests covering row mapping, error mapping, 2,500-row paging, and the arguments of every write).
+  - `./scripts/test-db.sh`: 162 SQL assertions passed.
+  - The web build with live configuration redirected to sign-in, switched to the demo, and showed the account entry on More, with no page errors. The build without configuration still runs the demo.
+  - Expo's online dependency check could not reach Expo's servers; the offline check reports dependencies up to date.
+- **Blockers:** The Supabase token saved for `api.supabase.com` is rejected ("JWT could not be decoded"), and the Supabase connector's account cannot see project `jnhvceaotcphzvmwptdf`. Running a local Supabase stand-in (downloaded PostgREST/GoTrue binaries) was not permitted in this session.
+- **Next steps:** With access, apply migrations 1–6 to the project, read the publishable key, set it in Vercel, then verify sign-up → workspace → clock in → request → approval end to end.
+
 ## 2026-11-23 — Timesheet table, schedule views, employee profile, live-app database layer
 
 - **PR / issue:** #2.

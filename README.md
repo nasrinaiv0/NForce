@@ -27,6 +27,17 @@ Native features (SF Symbols, native tabs, haptics) need a development build: `np
 
 In the app, open **More → Workspace profile (demo)** to switch between people in a real reporting hierarchy: Staff (Jordan) → Supervisor (Maya) → Manager (Elena) → Executive (Rafael) → **Owner (Sofia, full organization access)**, plus HR (Hana), Payroll (Paulo), Operations (Ivy) and IT admin (Alex), each with different access. Navigation, home widgets, what you can see and what you can approve all change, because the (mock) server enforces permissions. **More → Customize** sets theme, accent color, density, platform look (iOS/Android), sidebar style and the Home layout. Widen the browser past 600 px to get the desktop sidebar layout.
 
+## Live mode (Supabase)
+
+Without configuration the app runs the built-in demo organization. To use a real workspace:
+
+1. **Database:** apply every file in `supabase/migrations/` to your Supabase project, in name order. Use `supabase db push` with the Supabase CLI, or paste each file into the SQL editor. Do not apply `supabase/tests/local_auth_shim.sql`; it is only for local test runs.
+2. **Auth:** in Supabase → Authentication → URL Configuration, set the Site URL to where the web app runs (for example your Vercel domain), so confirmation and password-reset links come back to the app.
+3. **App:** copy `apps/mobile/.env.example` to `apps/mobile/.env.local` and set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_KEY` (the project's publishable key). For the web deployment, set the same two variables in Vercel → Project → Settings → Environment Variables.
+4. **First run:** create an account, confirm the email, then create your organization (you become its owner). Add people under **People → Add employee** with the email of their NForce account.
+
+Both settings are public by design. Never put a service-role or secret key in the app.
+
 ## Screenshots
 
 | Phone (iOS look, light) | Phone (Android look, dark) |

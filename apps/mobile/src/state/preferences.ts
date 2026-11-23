@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ROLE_TEMPLATES } from '@nforce/core';
 import { z } from 'zod';
 
+import { liveConfigured } from '@/data/supabase';
 import { ACCENT_IDS } from '@/design/accents';
 
 import { createStore, useStore } from './store';
@@ -28,6 +29,10 @@ const PreferencesSchema = z.object({
   /** Home dashboard layout: widget order and hidden widgets. */
   homeOrder: z.array(z.enum(HOME_WIDGETS)).max(20),
   homeHidden: z.array(z.enum(HOME_WIDGETS)).max(20),
+  /** Which backend the app talks to: the sample organization, or the live Supabase workspace. */
+  backend: z.enum(['demo', 'live']),
+  /** Selected live workspace (organization id); empty picks the first one. */
+  workspaceId: z.string().max(64),
 });
 
 export type Preferences = z.infer<typeof PreferencesSchema>;
@@ -44,6 +49,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   sidebar: 'expanded',
   homeOrder: [],
   homeHidden: [],
+  backend: liveConfigured ? 'live' : 'demo',
+  workspaceId: '',
 };
 
 const STORAGE_KEY = 'nforce.preferences.v2';

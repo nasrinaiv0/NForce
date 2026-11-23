@@ -12,9 +12,11 @@ import { Card } from '@/components/Surface';
 import { Text } from '@/components/Text';
 import { Touchable } from '@/components/Touchable';
 import { errorMessage, useCreateEmployee, useDirectory, useProfile, useSession, useUpdateEmployee } from '@/data/queries';
+import { liveConfigured } from '@/data/supabase';
 import { haptics } from '@/design/haptics';
 import { useTheme } from '@/design/theme';
 import { useI18n } from '@/i18n';
+import { usePreference } from '@/state/preferences';
 
 /**
  * Add or edit an employee. Role choices come from the server and include only
@@ -51,6 +53,9 @@ function Form({ id, initial }: { id?: UserId; initial?: ReturnType<typeof usePro
   const [managerId, setManagerId] = useState<UserId | undefined>(initial?.manager?.id);
   const [role, setRole] = useState<RoleTemplate>(initial?.role ?? 'staff');
   const [managerSearch, setManagerSearch] = useState('');
+  const [email, setEmail] = useState('');
+  const backendPref = usePreference('backend');
+  const live = liveConfigured && backendPref === 'live';
 
   const people = useMemo(() => directory.data ?? [], [directory.data]);
   const departments = useMemo(() => [...new Set(people.map((p) => p.department))].sort(), [people]);
@@ -69,7 +74,8 @@ function Form({ id, initial }: { id?: UserId; initial?: ReturnType<typeof usePro
   const error = create.error ?? update.error;
   // The top of the organization has no manager; everyone else needs one.
   const needsManager = !editing || initial?.manager !== undefined;
-  const valid = name.trim().length > 1 && title.trim().length > 1 && (managerId !== undefined || !needsManager);
+  const emailOk = !live || editing || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const valid = name.trim().length > 1 && title.trim().length > 1 && (managerId !== undefined || !needsManager) && emailOk;
 
   const save = () => {
     if (!valid) return;
@@ -78,7 +84,7 @@ function Form({ id, initial }: { id?: UserId; initial?: ReturnType<typeof usePro
       update.mutate({ id, patch: { title, ...(managerId !== undefined ? { managerId } : {}), ...(role !== initial?.role ? { role } : {}) } }, done);
     } else {
       if (managerId === undefined) return;
-      create.mutate({ name, title, role, managerId, department, ...(team !== undefined ? { teamName: team } : {}) }, done);
+      create.mutate({ name, title, role, managerId, department, ...(team !== undefined ? { teamName: team } : {}), ...(live ? { email: email.trim() } : {}) }, done);
     }
   };
 
@@ -88,6 +94,24 @@ function Form({ id, initial }: { id?: UserId; initial?: ReturnType<typeof usePro
       <Field label={i18n.t('people.form.name')}>
         <TextInput value={name} onChangeText={setName} editable={!editing} placeholder={i18n.t('people.form.namePlaceholder')} placeholderTextColor={t.colors.textTertiary} accessibilityLabel={i18n.t('people.form.name')} style={[input, editing && { opacity: 0.6 }]} />
       </Field>
+      {live && !editing && (
+        <Field label={i18n.t('people.form.email')}>
+          <TextInput
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            autoComplete="email"
+            placeholder="name@company.com"
+            placeholderTextColor={t.colors.textTertiary}
+            accessibilityLabel={i18n.t('people.form.email')}
+            style={input}
+          />
+          <Text variant="caption" color="textTertiary">
+            {i18n.t('people.form.emailHint')}
+          </Text>
+        </Field>
+      )}
       <Field label={i18n.t('people.form.title')}>
         <TextInput value={title} onChangeText={setTitle} placeholder={i18n.t('people.form.titlePlaceholder')} placeholderTextColor={t.colors.textTertiary} accessibilityLabel={i18n.t('people.form.title')} style={input} />
       </Field>

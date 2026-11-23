@@ -73,6 +73,14 @@ export interface EmployeeInput {
   readonly managerId: UserId;
   readonly department: string;
   readonly teamName?: string;
+  /** Sign-in email of the person's NForce account (required by the live backend). */
+  readonly email?: string;
+}
+
+export interface LeaveTypeInfo {
+  readonly id: string;
+  readonly name: string;
+  readonly allowHalfDays: boolean;
 }
 
 export interface AttendanceSnapshot {
@@ -398,6 +406,7 @@ export interface NForceApi {
   createTask(input: NewTaskInput): Promise<Task>;
   setTaskDone(id: string, done: boolean): Promise<Task>;
   balances(): Promise<LeaveBalance[]>;
+  leaveTypes(): Promise<LeaveTypeInfo[]>;
   myRequests(): Promise<MyRequest[]>;
   previewTimeOff(input: TimeOffInput): Promise<{ days: number; balanceImpact: number; balanceAfter?: number }>;
   requestTimeOff(input: TimeOffInput): Promise<MyRequest>;
