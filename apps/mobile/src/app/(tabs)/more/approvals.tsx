@@ -1,4 +1,4 @@
-import { facetCounts, queryList, type SortSpec } from '@nforce/core';
+import { facetCounts } from '@nforce/core';
 import { useMemo, useState } from 'react';
 import { AccessibilityInfo, StyleSheet, TextInput, View } from 'react-native';
 
@@ -6,7 +6,7 @@ import { Button } from '@/components/Button';
 import { SegmentedControl } from '@/components/Controls';
 import { Avatar, Pill, type Tone } from '@/components/Display';
 import { Icon } from '@/components/Icon';
-import { ListToolbar, type FilterOption, type SortOption } from '@/components/ListToolbar';
+import { ListControls, useListView } from '@/components/ListView';
 import { describeRequest as describe } from '@/components/requestText';
 import { EmptyState, ErrorState, LoadingBlock, Screen } from '@/components/Screen';
 import { Card } from '@/components/Surface';
@@ -14,6 +14,7 @@ import { Text } from '@/components/Text';
 import { errorMessage, useApprovals, useDecide, useSession } from '@/data/queries';
 import type { ApprovalItem, ApprovalStepView, RequestKind } from '@/data/types';
 import { haptics } from '@/design/haptics';
+import { approvalFields } from '@/data/listFields';
 import { useTheme } from '@/design/theme';
 import { useNow } from '@/hooks/useNow';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -29,8 +30,6 @@ const KIND_TONE: Readonly<Record<RequestKind, Tone>> = {
 const KINDS: readonly RequestKind[] = ['leave', 'day_off', 'overtime', 'timesheet', 'correction'];
 
 type Scope = 'mine' | 'all';
-type KindFilter = 'all' | RequestKind;
-type SortKey = 'newest' | 'requester' | 'kind' | 'starts';
 
 export default function ApprovalsScreen() {
   const t = useTheme();
@@ -38,42 +37,24 @@ export default function ApprovalsScreen() {
   const { columns } = useResponsive();
   const approvals = useApprovals();
   const [scope, setScope] = useState<Scope>('mine');
-  const [kind, setKind] = useState<KindFilter>('all');
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortSpec<SortKey>>({ key: 'newest', direction: 'desc' });
+  const fields = useMemo(() => approvalFields(i18n), [i18n]);
+  const list = useListView({
+    id: 'approvals',
+    fields,
+    defaultSort: { key: 'submitted', direction: 'desc' },
+    searchText: (a) => [a.requester.name, a.teamName, i18n.t(`approvals.kind.${a.kind}`), describe(a, i18n).summary],
+    quickFilters: [
+      { value: 'all', label: i18n.t('list.all') },
+      ...KINDS.map((k) => ({ value: k, label: i18n.t(`approvals.kind.${k}`), test: (a: ApprovalItem) => a.kind === k })),
+    ],
+  });
 
   const inScope = useMemo(
     () => (approvals.data ?? []).filter((a) => (scope === 'mine' ? a.canDecide : true)),
     [approvals.data, scope],
   );
-  const counts = useMemo(() => facetCounts(inScope, (a) => a.kind), [inScope]);
-  const rows = useMemo(
-    () =>
-      queryList(inScope, {
-        filters: kind === 'all' ? [] : [(a) => a.kind === kind],
-        search: { text: search, fields: (a) => [a.requester.name, a.teamName, i18n.t(`approvals.kind.${a.kind}`), describe(a, i18n).summary] },
-        sort,
-        locale: i18n.tag,
-        accessors: {
-          newest: (a) => a.submittedAt,
-          requester: (a) => a.requester.name,
-          kind: (a) => i18n.t(`approvals.kind.${a.kind}`),
-          starts: (a) => ('start' in a.payload ? a.payload.start : 'date' in a.payload ? a.payload.date : 'periodStart' in a.payload ? a.payload.periodStart : undefined),
-        },
-      }),
-    [inScope, kind, search, sort, i18n],
-  );
-
-  const filters: FilterOption<KindFilter>[] = [
-    { value: 'all', label: i18n.t('list.all'), count: inScope.length },
-    ...KINDS.filter((k) => (counts.get(k) ?? 0) > 0 || k === kind).map((k) => ({ value: k, label: i18n.t(`approvals.kind.${k}`), count: counts.get(k) ?? 0 })),
-  ];
-  const sortOptions: SortOption<SortKey>[] = [
-    { key: 'newest', label: i18n.t('approvals.sort.submitted'), defaultDirection: 'desc' },
-    { key: 'starts', label: i18n.t('approvals.sort.starts') },
-    { key: 'requester', label: i18n.t('approvals.sort.requester') },
-    { key: 'kind', label: i18n.t('approvals.sort.kind') },
-  ];
+  const counts = facetCounts(inScope, (a) => a.kind);
+  const rows = list.apply(inScope);
   const mineCount = (approvals.data ?? []).filter((a) => a.canDecide).length;
 
   return (
@@ -86,17 +67,11 @@ export default function ApprovalsScreen() {
         value={scope}
         onChange={setScope}
       />
-      <ListToolbar
-        search={search}
-        onSearch={setSearch}
+      <ListControls
+        state={list}
         searchPlaceholder={i18n.t('approvals.search')}
-        filters={filters}
-        filter={kind}
-        onFilter={setKind}
-        sortOptions={sortOptions}
-        sort={sort}
-        onSort={setSort}
-        resultLabel={i18n.plural('list.results', rows.length)}
+        resultCount={rows.length}
+        quickCounts={{ all: inScope.length, ...Object.fromEntries(counts) }}
       />
       {approvals.isError ? (
         <ErrorState onRetry={() => void approvals.refetch()} message={errorMessage(approvals.error, i18n.t('common.errorBody'))} />

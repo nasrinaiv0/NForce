@@ -55,6 +55,7 @@ Both settings are public by design. Never put a service-role or secret key in th
 | ![Home, dark](docs/screenshots/15-desktop-home-dark.jpg) | ![Phone: home, executive report, attendance](docs/screenshots/16-phone-reports-attendance.jpg) |
 | ![Timesheet table](docs/screenshots/17-desktop-timesheet-table.jpg) | ![Team roster (week)](docs/screenshots/18-desktop-team-roster.jpg) |
 | ![Schedule month calendar](docs/screenshots/19-desktop-schedule-month.jpg) | ![Employee profile](docs/screenshots/20-desktop-employee-profile.jpg) |
+| ![Custom filters on the team list](docs/screenshots/22-desktop-custom-filters.jpg) | ![Filter builder](docs/screenshots/23-desktop-filter-builder.jpg) |
 
 Rendered from the production web bundle with Playwright, with mock data. Not yet captured on physical devices.
 

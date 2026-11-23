@@ -1,7 +1,9 @@
+import type { SortSpec } from '@nforce/core';
 import type { ReactNode } from 'react';
 import { ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useTheme } from '@/design/theme';
+import { Icon } from './Icon';
 import { Text } from './Text';
 import { Touchable } from './Touchable';
 
@@ -14,6 +16,8 @@ export interface GridColumn<T> {
   readonly render: (row: T) => ReactNode;
   /** Optional cell in the totals row. */
   readonly footer?: ReactNode;
+  /** Field key this column sorts by when its header is tapped. */
+  readonly sortKey?: string;
 }
 
 /**
@@ -32,6 +36,8 @@ export function GridTable<T>({
   caption,
   emptyLabel,
   style,
+  sort,
+  onSort,
 }: {
   columns: readonly GridColumn<T>[];
   rows: readonly T[];
@@ -44,6 +50,9 @@ export function GridTable<T>({
   caption?: string;
   emptyLabel?: string;
   style?: StyleProp<ViewStyle>;
+  /** Current sort; headers with a `sortKey` become sort buttons. */
+  sort?: SortSpec;
+  onSort?: (s: SortSpec) => void;
 }) {
   const t = useTheme();
   const minWidth = columns.reduce((n, c) => n + c.width, 0);
@@ -51,13 +60,37 @@ export function GridTable<T>({
 
   const header = (
     <View style={[styles.row, styles.header, { backgroundColor: t.colors.fill, borderBottomColor: t.colors.separator }]} accessibilityRole="header">
-      {columns.map((c) => (
-        <View key={c.key} style={cell(c)}>
-          <Text variant="caption" weight="700" color="textSecondary" numberOfLines={1} style={styles.headerText}>
-            {c.title}
-          </Text>
-        </View>
-      ))}
+      {columns.map((c) => {
+        const active = c.sortKey !== undefined && sort?.key === c.sortKey;
+        const label = (
+          <View style={[styles.headerInner, c.align === 'right' && styles.headerRight]}>
+            <Text variant="caption" weight="700" color={active ? 'primary' : 'textSecondary'} numberOfLines={1} style={styles.headerText}>
+              {c.title}
+            </Text>
+            {active && <Icon name={sort?.direction === 'asc' ? 'arrowUp' : 'arrowDown'} size={11} color={t.colors.primary} />}
+          </View>
+        );
+        return (
+          <View key={c.key} style={cell(c)}>
+            {c.sortKey !== undefined && onSort !== undefined ? (
+              <Touchable
+                feedback="none"
+                haptic="selection"
+                accessibilityRole="button"
+                accessibilityLabel={`${c.title}${active ? `, ${sort?.direction === 'asc' ? '↑' : '↓'}` : ''}`}
+                onPress={() => {
+                  const key = c.sortKey as string;
+                  onSort(active && sort !== undefined ? { key, direction: sort.direction === 'asc' ? 'desc' : 'asc' } : { key, direction: c.align === 'right' ? 'desc' : 'asc' });
+                }}
+              >
+                {label}
+              </Touchable>
+            ) : (
+              label
+            )}
+          </View>
+        );
+      })}
     </View>
   );
 
@@ -133,6 +166,8 @@ const styles = StyleSheet.create({
   header: { minHeight: 38, borderBottomWidth: StyleSheet.hairlineWidth },
   footer: { minHeight: 44 },
   headerText: { textTransform: 'uppercase', letterSpacing: 0.4 },
+  headerInner: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  headerRight: { justifyContent: 'flex-end' },
   cell: { paddingHorizontal: 8, paddingVertical: 6, justifyContent: 'center' },
   right: { alignItems: 'flex-end' },
   center: { alignItems: 'center' },

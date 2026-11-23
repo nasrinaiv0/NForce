@@ -1,15 +1,17 @@
-import { PERMISSIONS, ROLE_GRANTS, ROLE_TEMPLATES, mergeGrants, queryList, type Scope } from '@nforce/core';
+import { PERMISSIONS, ROLE_GRANTS, ROLE_TEMPLATES, mergeGrants, type Scope } from '@nforce/core';
 import { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { SegmentedControl } from '@/components/Controls';
 import { Avatar, Pill, type Tone } from '@/components/Display';
-import { ListToolbar } from '@/components/ListToolbar';
+import { ListControls, useListView } from '@/components/ListView';
 import { RateCard } from '@/components/PayBreakdown';
 import { ErrorState, LoadingBlock, Screen } from '@/components/Screen';
 import { Card, ListRow, ListSection } from '@/components/Surface';
 import { Text } from '@/components/Text';
+import { auditFields, directoryFields, holidayFields } from '@/data/listFields';
 import { errorMessage, useAdmin, useSession } from '@/data/queries';
+import type { AdminOverview } from '@/data/types';
 import { useTheme } from '@/design/theme';
 import { useI18n } from '@/i18n';
 
@@ -23,19 +25,66 @@ export default function AdminScreen() {
   const admin = useAdmin();
   const session = useSession();
   const [tab, setTab] = useState<Tab>('roles');
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<{ key: 'newest' | 'action'; direction: 'asc' | 'desc' }>({ key: 'newest', direction: 'desc' });
   const tz = session.data?.organization.timeZone ?? 'UTC';
   const matrix = useMemo(() => ROLE_TEMPLATES.map((r) => ({ role: r, grants: mergeGrants(ROLE_GRANTS[r]) })), []);
-  const audit = useMemo(
-    () =>
-      queryList(admin.data?.audit ?? [], {
-        search: { text: search, fields: (e) => [e.actor.name, e.action, e.detail] },
-        sort,
-        accessors: { newest: (e) => e.at, action: (e) => e.action },
-      }),
-    [admin.data?.audit, search, sort],
+  const memberList = useListView({
+    id: 'admin-members',
+    fields: useMemo(() => directoryFields(i18n), [i18n]),
+    defaultSort: { key: 'name', direction: 'asc' },
+    searchText: (m) => [m.person.name, m.person.title, m.department, i18n.t(`role.${m.role}`)],
+  });
+  const auditList = useListView({
+    id: 'admin-audit',
+    fields: useMemo(() => auditFields(i18n), [i18n]),
+    defaultSort: { key: 'date', direction: 'desc' },
+    searchText: (e) => [e.actor.name, e.action, e.detail],
+  });
+  const holidayList = useListView({
+    id: 'admin-holidays',
+    fields: useMemo(() => holidayFields<AdminOverview['holidays'][number]>(i18n), [i18n]),
+    defaultSort: { key: 'date', direction: 'asc' },
+    searchText: (h) => [h.name],
+    quickFilters: [
+      { value: 'all', label: i18n.t('list.all') },
+      { value: 'regular', label: i18n.t('opt.holiday.regular'), test: (h) => h.kind === 'regular' },
+      { value: 'special', label: i18n.t('opt.holiday.special'), test: (h) => h.kind === 'special' },
+    ],
+  });
+  const permissionRows = useMemo(
+    () => PERMISSIONS.map((perm) => ({ perm, area: perm.split('.')[0] ?? perm, roles: matrix.filter((m) => m.grants.has(perm)).map((m) => m.role) })),
+    [matrix],
   );
+  const permissionList = useListView({
+    id: 'admin-permissions',
+    fields: useMemo(
+      () => [
+        { key: 'perm', label: i18n.t('admin.permission'), kind: 'text' as const, get: (r: (typeof permissionRows)[number]) => r.perm },
+        {
+          key: 'area',
+          label: i18n.t('field.area'),
+          kind: 'choice' as const,
+          get: (r: (typeof permissionRows)[number]) => r.area,
+          options: [...new Set(PERMISSIONS.map((x) => x.split('.')[0] ?? x))].map((v) => ({ value: v, label: v })),
+        },
+        {
+          key: 'roles',
+          label: i18n.t('field.grantedTo'),
+          kind: 'choice' as const,
+          get: (r: (typeof permissionRows)[number]) => r.roles,
+          options: ROLE_TEMPLATES.map((role) => ({ value: role, label: i18n.t(`role.${role}`) })),
+          sortable: false,
+        },
+        { key: 'count', label: i18n.t('field.roleCount'), kind: 'number' as const, get: (r: (typeof permissionRows)[number]) => r.roles.length },
+      ],
+      [i18n],
+    ),
+    defaultSort: { key: 'area', direction: 'asc' },
+    searchText: (r) => [r.perm],
+  });
+  const permissions = permissionList.apply(permissionRows);
+  const members = memberList.apply(admin.data?.members ?? []);
+  const audit = auditList.apply(admin.data?.audit ?? []);
+  const holidays = holidayList.apply(admin.data?.holidays ?? []);
 
   if (admin.isError) {
     return (
@@ -72,6 +121,7 @@ export default function AdminScreen() {
             <Text variant="footnote" color="textSecondary">
               {i18n.t('admin.matrixHint')}
             </Text>
+            <ListControls state={permissionList} searchPlaceholder={i18n.t('list.search')} resultCount={permissions.length} />
             <ScrollView horizontal showsHorizontalScrollIndicator>
               <View>
                 <View style={[styles.mRow, { borderBottomColor: t.colors.separator }]}>
@@ -84,7 +134,7 @@ export default function AdminScreen() {
                     </Text>
                   ))}
                 </View>
-                {PERMISSIONS.map((perm) => (
+                {permissions.map(({ perm }) => (
                   <View key={perm} style={[styles.mRow, { borderBottomColor: t.colors.separator }]}>
                     <Text variant="footnote" style={styles.permCol} numberOfLines={1}>
                       {perm}
@@ -102,15 +152,16 @@ export default function AdminScreen() {
               </View>
             </ScrollView>
           </Card>
+          <ListControls state={memberList} searchPlaceholder={i18n.t('people.search')} resultCount={members.length} />
           <ListSection title={i18n.t('admin.members', { count: a.members.length })}>
-            {a.members.map((m, i) => (
+            {members.map((m, i) => (
               <ListRow
                 key={m.person.id}
                 title={m.person.name}
                 subtitle={[m.person.title, m.manager !== undefined ? i18n.t('admin.reportsTo', { name: m.manager.name }) : undefined].filter(Boolean).join(' · ')}
                 leading={<Avatar initials={m.person.initials} hue={m.person.hue} size={32} />}
                 trailing={<Pill label={i18n.t(`role.${m.role}`)} tone="neutral" />}
-                last={i === a.members.length - 1}
+                last={i === members.length - 1}
               />
             ))}
           </ListSection>
@@ -118,18 +169,7 @@ export default function AdminScreen() {
       )}
       {tab === 'audit' && (
         <>
-          <ListToolbar
-            search={search}
-            onSearch={setSearch}
-            searchPlaceholder={i18n.t('admin.auditSearch')}
-            sortOptions={[
-              { key: 'newest', label: i18n.t('admin.sort.time'), defaultDirection: 'desc' },
-              { key: 'action', label: i18n.t('admin.sort.action') },
-            ]}
-            sort={sort}
-            onSort={setSort}
-            resultLabel={i18n.plural('list.results', audit.length)}
-          />
+          <ListControls state={auditList} searchPlaceholder={i18n.t('admin.auditSearch')} resultCount={audit.length} />
           <ListSection footer={i18n.t('admin.auditFooter')}>
             {audit.slice(0, 80).map((e, i) => (
               <ListRow
@@ -145,14 +185,15 @@ export default function AdminScreen() {
       )}
       {tab === 'calendar' && (
         <>
+          <ListControls state={holidayList} resultCount={holidays.length} />
           <ListSection title={i18n.t('admin.holidays')} footer={i18n.t('admin.holidaysFooter')}>
-            {a.holidays.map((h, i) => (
+            {holidays.map((h, i) => (
               <ListRow
                 key={h.date}
                 title={h.name}
                 subtitle={i18n.date(h.date, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
                 trailing={<Pill label={i18n.t(h.kind === 'regular' ? 'pay.day.regular_holiday' : 'pay.day.special')} tone={h.kind === 'regular' ? 'danger' : 'warning'} />}
-                last={i === a.holidays.length - 1}
+                last={i === holidays.length - 1}
               />
             ))}
           </ListSection>

@@ -1,12 +1,16 @@
 import { router, type Href } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
+import { useMemo } from 'react';
+
 import { Button } from '@/components/Button';
 import { Icon, type IconName } from '@/components/Icon';
+import { ListControls, useListView } from '@/components/ListView';
 import { EmptyState, ErrorState, LoadingBlock, Screen } from '@/components/Screen';
 import { ListSection } from '@/components/Surface';
 import { Text } from '@/components/Text';
 import { Touchable } from '@/components/Touchable';
+import { notificationFields } from '@/data/listFields';
 import { errorMessage, useMarkNotificationsRead, useNotifications, useSession } from '@/data/queries';
 import type { NotificationItem } from '@/data/types';
 import { useTheme } from '@/design/theme';
@@ -45,9 +49,20 @@ export default function NotificationsScreen() {
   const session = useSession();
   const notifications = useNotifications();
   const markRead = useMarkNotificationsRead();
-  const items = notifications.data ?? [];
-  const unread = items.filter((n) => !n.read);
+  const all = notifications.data ?? [];
+  const unread = all.filter((n) => !n.read);
   const tz = session.data?.organization.timeZone ?? 'UTC';
+  const list = useListView({
+    id: 'notifications',
+    fields: useMemo(() => notificationFields(i18n), [i18n]),
+    defaultSort: { key: 'date', direction: 'desc' },
+    searchText: (n) => [message(n, i18n, tz)],
+    quickFilters: [
+      { value: 'all', label: i18n.t('list.all') },
+      { value: 'unread', label: i18n.t('notify.unread'), test: (n: NotificationItem) => !n.read },
+    ],
+  });
+  const items = list.apply(all);
 
   return (
     <Screen onRefresh={() => notifications.refetch()} maxWidth={800}>
@@ -55,11 +70,14 @@ export default function NotificationsScreen() {
         <ErrorState onRetry={() => void notifications.refetch()} message={errorMessage(notifications.error, i18n.t('common.errorBody'))} />
       ) : notifications.data === undefined ? (
         <LoadingBlock rows={3} height={64} />
-      ) : items.length === 0 ? (
+      ) : all.length === 0 ? (
         <EmptyState icon="bell" title={i18n.t('notify.emptyTitle')} body={i18n.t('notify.emptyBody')} />
       ) : (
         <>
+          <ListControls state={list} searchPlaceholder={i18n.t('list.search')} resultCount={items.length} quickCounts={{ all: all.length, unread: unread.length }} />
+          {items.length === 0 && <EmptyState icon="search" title={i18n.t('list.noMatches')} />}
           {unread.length > 0 && <Button title={i18n.t('notify.markAll')} variant="plain" size="small" onPress={() => markRead.mutate(unread.map((n) => n.id))} style={{ alignSelf: 'flex-end' }} />}
+          {items.length > 0 && (
           <ListSection>
             {items.map((n, idx) => (
               <Touchable
@@ -88,6 +106,7 @@ export default function NotificationsScreen() {
               </Touchable>
             ))}
           </ListSection>
+          )}
         </>
       )}
     </Screen>

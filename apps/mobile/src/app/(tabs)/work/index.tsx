@@ -1,24 +1,22 @@
-import { facetCounts, groupTasks, localDateKey, queryList, type SortSpec, type Task, type TaskBucket } from '@nforce/core';
+import { facetCounts, groupTasks, localDateKey, type Task, type TaskBucket } from '@nforce/core';
 import { Stack, router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Checkbox, Fab, SegmentedControl } from '@/components/Controls';
 import { Pill, type Tone } from '@/components/Display';
-import { ListToolbar, type FilterOption } from '@/components/ListToolbar';
+import { ListControls, useListView } from '@/components/ListView';
 import { Icon } from '@/components/Icon';
 import { EmptyState, ErrorState, LoadingBlock, Screen } from '@/components/Screen';
 import { ListSection } from '@/components/Surface';
 import { Text } from '@/components/Text';
 import { Touchable } from '@/components/Touchable';
+import { taskFields } from '@/data/listFields';
 import { useSession, useSetTaskDone, useTasks } from '@/data/queries';
 import { useTheme } from '@/design/theme';
 import { useI18n, type I18n } from '@/i18n';
 
 type Filter = 'open' | 'all';
-type PriorityFilter = 'any' | Task['priority'];
-type SortKey = 'priority' | 'due' | 'title';
-const PRIORITY_RANK: Readonly<Record<Task['priority'], number>> = { urgent: 0, high: 1, normal: 2, low: 3 };
 const PRIORITY_TONE: Readonly<Record<Task['priority'], Tone | null>> = { urgent: 'danger', high: 'warning', normal: null, low: null };
 
 export default function WorkScreen() {
@@ -28,34 +26,25 @@ export default function WorkScreen() {
   const session = useSession();
   const tasks = useTasks();
   const [filter, setFilter] = useState<Filter>('open');
-  const [priority, setPriority] = useState<PriorityFilter>('any');
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortSpec<SortKey>>({ key: 'priority', direction: 'asc' });
   const today = localDateKey(new Date(), session.data?.organization.timeZone ?? 'UTC');
-
-  const counts = useMemo(() => facetCounts(tasks.data ?? [], (x) => x.priority), [tasks.data]);
-  const groups = useMemo(() => {
-    const all = groupTasks(tasks.data ?? [], today)
-      .map((g) => ({
-        bucket: g.bucket,
-        // Search, filter and sort apply within each due-date group.
-        tasks: queryList(g.tasks, {
-          filters: priority === 'any' ? [] : [(x) => x.priority === priority],
-          search: { text: search, fields: (x) => [x.title, x.link?.label] },
-          sort,
-          locale: i18n.tag,
-          accessors: { priority: (x) => PRIORITY_RANK[x.priority], due: (x) => x.due, title: (x) => x.title },
-        }),
-      }))
-      .filter((g) => g.tasks.length > 0);
-    return filter === 'open' ? all.filter((g) => g.bucket !== 'done') : all;
-  }, [tasks.data, today, filter, priority, search, sort, i18n.tag]);
+  const counts = facetCounts(tasks.data ?? [], (x) => x.priority);
+  const fields = useMemo(() => taskFields(i18n), [i18n]);
+  const list = useListView({
+    id: 'work',
+    fields,
+    defaultSort: { key: 'priority', direction: 'asc' },
+    searchText: (x) => [x.title, x.link?.label],
+    quickFilters: [
+      { value: 'any', label: tr('work.anyPriority') },
+      ...(['urgent', 'high', 'normal', 'low'] as const).map((p) => ({ value: p, label: tr(`work.priority.${p}`), test: (x: Task) => x.priority === p })),
+    ],
+  });
+  // Search, filters and sort apply within each due-date group.
+  const all = groupTasks(tasks.data ?? [], today)
+    .map((g) => ({ bucket: g.bucket, tasks: list.apply(g.tasks) }))
+    .filter((g) => g.tasks.length > 0);
+  const groups = filter === 'open' ? all.filter((g) => g.bucket !== 'done') : all;
   const shown = groups.reduce((n, g) => n + g.tasks.length, 0);
-  const priorityFilters: FilterOption<PriorityFilter>[] = [
-    { value: 'any', label: tr('work.anyPriority') },
-    ...(['urgent', 'high', 'normal', 'low'] as const).map((p) => ({ value: p, label: tr(`work.priority.${p}`), count: counts.get(p) ?? 0 })),
-  ];
-
   const openNew = () => router.push('/new-task');
 
   return (
@@ -81,28 +70,13 @@ export default function WorkScreen() {
           value={filter}
           onChange={setFilter}
         />
-        <ListToolbar
-          search={search}
-          onSearch={setSearch}
-          searchPlaceholder={tr('work.search')}
-          filters={priorityFilters}
-          filter={priority}
-          onFilter={setPriority}
-          sortOptions={[
-            { key: 'priority', label: tr('work.sort.priority') },
-            { key: 'due', label: tr('work.sort.due') },
-            { key: 'title', label: tr('work.sort.title') },
-          ]}
-          sort={sort}
-          onSort={setSort}
-          resultLabel={i18n.plural('list.results', shown)}
-        />
+        <ListControls state={list} searchPlaceholder={tr('work.search')} resultCount={shown} quickCounts={{ any: tasks.data?.length ?? 0, ...Object.fromEntries(counts) }} />
         {tasks.isError ? (
           <ErrorState onRetry={() => void tasks.refetch()} />
         ) : tasks.data === undefined ? (
           <LoadingBlock rows={4} height={56} />
         ) : groups.length === 0 ? (
-          search.length > 0 || priority !== 'any' ? (
+          list.search.length > 0 || list.quick !== 'any' || list.activeCount > 0 ? (
             <EmptyState icon="search" title={tr('list.noMatches')} />
           ) : (
             <EmptyState icon="sparkles" title={tr('work.emptyTitle')} body={tr('work.emptyBody')} />

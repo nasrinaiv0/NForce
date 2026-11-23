@@ -13,6 +13,7 @@ import { liveConfigured } from '@/data/supabase';
 import { ThemeProvider, useTheme } from '@/design/theme';
 import { useI18n } from '@/i18n';
 import { activeWorkspace, backendStore, startBackend, useBackend } from '@/state/backend';
+import { hydrateListViews } from '@/state/listViews';
 import { hydratePreferences, preferencesStore, usePreference, usePreferencesHydrated } from '@/state/preferences';
 
 void SplashScreen.preventAutoHideAsync().catch(() => undefined);
@@ -20,6 +21,7 @@ void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 export default function RootLayout() {
   useEffect(() => {
     void hydratePreferences().then(startBackend);
+    void hydrateListViews();
   }, []);
   useEffect(() => {
     // Whenever the account, workspace or backend changes, drop all cached data.

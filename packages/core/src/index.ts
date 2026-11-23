@@ -11,6 +11,7 @@ export * from './workspace/navigation';
 export * from './approvals/chain';
 export * from './pay/classify';
 export * from './collections/query';
+export * from './collections/conditions';
 export * from './reports/attendance';
 export * from './reports/approvals';
 export * from './export/csv';

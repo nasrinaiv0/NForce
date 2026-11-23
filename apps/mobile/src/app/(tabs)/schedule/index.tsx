@@ -7,12 +7,14 @@ import { Button } from '@/components/Button';
 import { SegmentedControl } from '@/components/Controls';
 import { Avatar } from '@/components/Display';
 import { GridTable, NumCell, type GridColumn } from '@/components/GridTable';
+import { ListControls, useListView } from '@/components/ListView';
 import { HeroCard } from '@/components/Hero';
 import { Icon } from '@/components/Icon';
 import { EmptyState, ErrorState, LoadingBlock, Screen } from '@/components/Screen';
 import { ListRow, ListSection } from '@/components/Surface';
 import { Text } from '@/components/Text';
 import { Touchable } from '@/components/Touchable';
+import { rosterFields, scheduleDayFields } from '@/data/listFields';
 import { useSession, useShifts, useTeamSchedule } from '@/data/queries';
 import type { RosterCell, RosterRow, Shift } from '@/data/types';
 import { useTheme } from '@/design/theme';
@@ -20,6 +22,7 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { useI18n, type I18n } from '@/i18n';
 
 type ViewMode = 'day' | 'week' | 'month';
+type DayRowData = { date: DateKey; cell: RosterCell; shift: Shift | undefined };
 type Scope = 'mine' | 'team';
 const DAY_STRIP = 14;
 
@@ -209,6 +212,13 @@ function WeekView({
   const fmt = { month: 'short', day: 'numeric' } as const;
   const mine = roster.data?.find((r) => r.isMe);
   const isThisWeek = start === mondayOf(today);
+  const rosterList = useListView({
+    id: 'schedule-roster',
+    fields: useMemo(() => rosterFields(i18n), [i18n]),
+    defaultSort: { key: 'name', direction: 'asc' },
+    searchText: (r) => [r.person.name, r.teamName],
+  });
+  const weekList = useListView({ id: 'schedule-week', fields: useMemo(() => scheduleDayFields<DayRowData>(i18n), [i18n]), defaultSort: { key: 'date', direction: 'asc' } });
 
   const nav = (
     <RangeNav
@@ -232,7 +242,7 @@ function WeekView({
   }
 
   if (scope === 'team') {
-    const others = roster.data;
+    const others = rosterList.apply(roster.data);
     const dayCols: GridColumn<RosterRow>[] = mine.days.map(({ date }) => ({
       key: date,
       title: `${i18n.date(date, { weekday: 'short' })} ${Number(date.slice(8))}`,
@@ -249,6 +259,7 @@ function WeekView({
     const columns: GridColumn<RosterRow>[] = [
       {
         key: 'person',
+        sortKey: 'name',
         title: i18n.t('schedule.col.person'),
         width: 190,
         render: (row) => (
@@ -266,27 +277,39 @@ function WeekView({
         ),
       },
       ...dayCols,
-      { key: 'hours', title: i18n.t('schedule.col.hours'), width: 76, align: 'right', render: (row) => <NumCell value={formatDuration(row.minutes)} strong /> },
+      { key: 'hours', sortKey: 'hours', title: i18n.t('schedule.col.hours'), width: 76, align: 'right', render: (row) => <NumCell value={formatDuration(row.minutes)} strong /> },
     ];
     return (
       <>
         {nav}
-        {others.length <= 1 ? (
+        {roster.data.length <= 1 ? (
           <EmptyState icon="team" title={i18n.t('schedule.team')} body={i18n.t('schedule.teamEmpty')} />
         ) : (
-          <GridTable columns={columns} rows={others} rowKey={(r) => r.person.id} caption={i18n.t('schedule.team')} rowTint={(r) => (r.isMe ? t.colors.primaryContainer : undefined)} />
+          <>
+            <ListControls state={rosterList} searchPlaceholder={i18n.t('team.search')} resultCount={others.length} />
+            <GridTable
+              columns={columns}
+              rows={others}
+              rowKey={(r) => r.person.id}
+              caption={i18n.t('schedule.team')}
+              rowTint={(r) => (r.isMe ? t.colors.primaryContainer : undefined)}
+              sort={rosterList.sort}
+              onSort={rosterList.setSort}
+              emptyLabel={i18n.t('list.noMatches')}
+            />
+          </>
         )}
       </>
     );
   }
 
   const byDate = new Map<string, Shift>((shifts.data ?? []).map((s) => [s.date, s]));
-  type DayRowData = { date: DateKey; cell: RosterCell; shift: Shift | undefined };
-  const rows: DayRowData[] = mine.days.map((d) => ({ date: d.date, cell: d.cell, shift: byDate.get(d.date) }));
-  const count = rows.filter((r) => r.cell.kind === 'shift').length;
+  const allRows: DayRowData[] = mine.days.map((d) => ({ date: d.date, cell: d.cell, shift: byDate.get(d.date) }));
+  const rows = weekList.apply(allRows);
+  const count = allRows.filter((r) => r.cell.kind === 'shift').length;
   const columns: GridColumn<DayRowData>[] = [
     {
-      key: 'date',
+      key: 'date', sortKey: 'date',
       title: i18n.t('schedule.col.date'),
       width: 128,
       render: (r) => (
@@ -302,8 +325,8 @@ function WeekView({
         </View>
       ),
     },
-    { key: 'shift', title: i18n.t('schedule.col.shift'), width: 150, render: (r) => <CellChip cell={r.cell} i18n={i18n} tz={tz} /> },
-    { key: 'hours', title: i18n.t('schedule.col.hours'), width: 76, align: 'right', render: (r) => <NumCell value={r.cell.kind === 'shift' ? formatDuration(r.cell.minutes) : '—'} /> },
+    { key: 'shift', sortKey: 'kind', title: i18n.t('schedule.col.shift'), width: 150, render: (r) => <CellChip cell={r.cell} i18n={i18n} tz={tz} /> },
+    { key: 'hours', sortKey: 'hours', title: i18n.t('schedule.col.hours'), width: 76, align: 'right', render: (r) => <NumCell value={r.cell.kind === 'shift' ? formatDuration(r.cell.minutes) : '—'} /> },
     {
       key: 'role',
       title: i18n.t('schedule.col.role'),
@@ -315,7 +338,7 @@ function WeekView({
       ),
     },
     {
-      key: 'location',
+      key: 'location', sortKey: 'location',
       title: i18n.t('schedule.col.location'),
       width: 170,
       render: (r) => (
@@ -341,9 +364,13 @@ function WeekView({
       <Text variant="subhead" color="textSecondary">
         {i18n.t('schedule.weekTotal', { count, hours: formatDuration(mine.minutes) })}
       </Text>
+      <ListControls state={weekList} resultCount={rows.length} />
       <GridTable
         columns={columns}
         rows={rows}
+        sort={weekList.sort}
+        onSort={weekList.setSort}
+        emptyLabel={i18n.t('list.noMatches')}
         rowKey={(r) => r.date}
         onRowPress={(r) => onOpenDay(r.date)}
         rowLabel={(r) => `${i18n.date(r.date, { weekday: 'long', month: 'long', day: 'numeric' })}: ${shiftLabel(r.cell, i18n, tz)}`}

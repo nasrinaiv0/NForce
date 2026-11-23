@@ -1,24 +1,24 @@
-import { queryList, type ApprovalStatus, type SortSpec } from '@nforce/core';
+import { type ApprovalStatus } from '@nforce/core';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { ApproverChain } from '@/components/ApproverChain';
 import { Button } from '@/components/Button';
 import { Meter, Pill, type Tone } from '@/components/Display';
-import { FilterChips, SortButton } from '@/components/ListToolbar';
+import { ListControls, useListView } from '@/components/ListView';
 import { ErrorState, LoadingBlock, Screen } from '@/components/Screen';
 import { Card, ListSection } from '@/components/Surface';
 import { Text } from '@/components/Text';
+import { myRequestFields } from '@/data/listFields';
 import { errorMessage, keys, queryClient, useApproverPreview, useBalances, useMyRequests } from '@/data/queries';
+import type { MyRequest } from '@/data/types';
 import { useTheme } from '@/design/theme';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useI18n } from '@/i18n';
 import { requestTitle } from '@/components/requestText';
 
 const STATUS_TONE: Readonly<Record<ApprovalStatus, Tone>> = { pending: 'warning', approved: 'success', returned: 'danger', cancelled: 'neutral' };
-type StatusFilter = 'all' | ApprovalStatus;
-type SortKey = 'submitted' | 'starts';
 
 export default function TimeOffScreen() {
   const t = useTheme();
@@ -27,18 +27,16 @@ export default function TimeOffScreen() {
   const balances = useBalances();
   const requests = useMyRequests();
   const chain = useApproverPreview();
-  const [status, setStatus] = useState<StatusFilter>('all');
-  const [sort, setSort] = useState<SortSpec<SortKey>>({ key: 'submitted', direction: 'desc' });
-
-  const rows = useMemo(
-    () =>
-      queryList(requests.data ?? [], {
-        filters: status === 'all' ? [] : [(r) => r.status === status],
-        sort,
-        accessors: { submitted: (r) => r.submittedAt, starts: (r) => requestTitle(r, i18n).start },
-      }),
-    [requests.data, status, sort, i18n],
-  );
+  const fields = useMemo(() => myRequestFields(i18n), [i18n]);
+  const STATUSES: readonly ApprovalStatus[] = ['pending', 'approved', 'returned', 'cancelled'];
+  const list = useListView({
+    id: 'my-requests',
+    fields,
+    defaultSort: { key: 'submitted', direction: 'desc' },
+    searchText: (r) => [requestTitle(r, i18n).title, requestTitle(r, i18n).subtitle],
+    quickFilters: [{ value: 'all', label: i18n.t('list.all') }, ...STATUSES.map((st) => ({ value: st, label: i18n.t(`approvals.status.${st}`), test: (r: MyRequest) => r.status === st }))],
+  });
+  const rows = list.apply(requests.data ?? []);
   const count = (s: ApprovalStatus) => (requests.data ?? []).filter((r) => r.status === s).length;
   const refresh = () => Promise.all([queryClient.invalidateQueries({ queryKey: keys.balances() }), queryClient.invalidateQueries({ queryKey: keys.requests() })]);
 
@@ -86,24 +84,12 @@ export default function TimeOffScreen() {
         <Text variant={t.flavor === 'ios' ? 'title2' : 'headline'} accessibilityRole="header">
           {i18n.t('timeoff.myRequests')}
         </Text>
-        <SortButton
-          options={[
-            { key: 'submitted', label: i18n.t('approvals.sort.submitted'), defaultDirection: 'desc' },
-            { key: 'starts', label: i18n.t('approvals.sort.starts') },
-          ]}
-          value={sort}
-          onChange={setSort}
-        />
       </View>
-      <FilterChips
-        options={[
-          { value: 'all', label: i18n.t('list.all'), count: requests.data?.length ?? 0 },
-          { value: 'pending', label: i18n.t('approvals.status.pending'), count: count('pending') },
-          { value: 'approved', label: i18n.t('approvals.status.approved'), count: count('approved') },
-          { value: 'returned', label: i18n.t('approvals.status.returned'), count: count('returned') },
-        ]}
-        value={status}
-        onChange={setStatus}
+      <ListControls
+        state={list}
+        searchPlaceholder={i18n.t('list.search')}
+        resultCount={rows.length}
+        quickCounts={{ all: requests.data?.length ?? 0, ...Object.fromEntries(STATUSES.map((st) => [st, count(st)])) }}
       />
       <ListSection>
         {requests.data === undefined ? (

@@ -1,12 +1,16 @@
 import { formatDuration, weightedMinutes } from '@nforce/core';
 import { router } from 'expo-router';
+import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import type { TimesheetDay, TimesheetView } from '@/data/types';
 import { useTheme } from '@/design/theme';
 import type { I18n } from '@/i18n';
 import { Button } from './Button';
+import { timesheetDayFields } from '@/data/listFields';
+
 import { GridTable, NumCell, type GridColumn } from './GridTable';
+import { ListControls, useListView } from './ListView';
 import { dayTypeColor } from './PayBreakdown';
 import { Text } from './Text';
 
@@ -16,15 +20,20 @@ import { Text } from './Text';
  */
 export function TimesheetTable({ sheet, i18n, timeZone }: { sheet: TimesheetView; i18n: I18n; timeZone: string }) {
   const t = useTheme();
+  const fields = useMemo(() => timesheetDayFields(i18n), [i18n]);
+  const list = useListView({ id: 'timesheet-days', fields, defaultSort: { key: 'date', direction: 'asc' }, searchText: (day) => [day.holidayName, i18n.t(`pay.day.${day.dayType}`)] });
+  const days = list.apply(sheet.days);
+  // Totals follow the rows shown when a filter hides some days.
+  const filtered = days.length !== sheet.days.length;
   const d = (m: number) => formatDuration(m);
   const unfiled = (day: TimesheetDay) => day.overtime.unapprovedMinutes - day.pendingOvertimeMinutes;
-  const anyFileable = sheet.isMine && sheet.days.some((day) => unfiled(day) > 0);
-  const sum = (f: (day: TimesheetDay) => number) => sheet.days.reduce((n, day) => n + f(day), 0);
+  const anyFileable = sheet.isMine && days.some((day) => unfiled(day) > 0);
+  const sum = (f: (day: TimesheetDay) => number) => days.reduce((n, day) => n + f(day), 0);
   const total = (value: string, strong = true) => <NumCell value={value} strong={strong} />;
 
   const columns: GridColumn<TimesheetDay>[] = [
     {
-      key: 'date',
+      key: 'date', sortKey: 'date',
       title: i18n.t('timesheet.col.date'),
       width: 118,
       render: (day) => (
@@ -42,7 +51,7 @@ export function TimesheetTable({ sheet, i18n, timeZone }: { sheet: TimesheetView
       ),
     },
     {
-      key: 'type',
+      key: 'type', sortKey: 'dayType',
       title: i18n.t('timesheet.col.dayType'),
       width: 132,
       render: (day) => (
@@ -66,33 +75,33 @@ export function TimesheetTable({ sheet, i18n, timeZone }: { sheet: TimesheetView
           </Text>
         ),
     },
-    { key: 'break', title: i18n.t('timesheet.col.break'), width: 70, align: 'right', render: (day) => <NumCell value={d(day.breakMinutes)} />, footer: total(d(sum((x) => x.breakMinutes)), false) },
-    { key: 'worked', title: i18n.t('timesheet.worked'), width: 78, align: 'right', render: (day) => <NumCell value={d(day.workedMinutes)} strong />, footer: total(d(sheet.totals.worked)) },
-    { key: 'regular', title: i18n.t('timesheet.col.regular'), width: 78, align: 'right', render: (day) => <NumCell value={d(day.regularMinutes)} />, footer: total(d(sheet.totals.regular), false) },
+    { key: 'break', sortKey: 'break', title: i18n.t('timesheet.col.break'), width: 70, align: 'right', render: (day) => <NumCell value={d(day.breakMinutes)} />, footer: total(d(sum((x) => x.breakMinutes)), false) },
+    { key: 'worked', sortKey: 'worked', title: i18n.t('timesheet.worked'), width: 78, align: 'right', render: (day) => <NumCell value={d(day.workedMinutes)} strong />, footer: total(d(filtered ? sum((x) => x.workedMinutes) : sheet.totals.worked)) },
+    { key: 'regular', sortKey: 'regular', title: i18n.t('timesheet.col.regular'), width: 78, align: 'right', render: (day) => <NumCell value={d(day.regularMinutes)} />, footer: total(d(filtered ? sum((x) => x.regularMinutes) : sheet.totals.regular), false) },
     {
-      key: 'ot',
+      key: 'ot', sortKey: 'overtime',
       title: i18n.t('timesheet.col.ot'),
       width: 70,
       align: 'right',
       render: (day) => <NumCell value={d(day.overtimeMinutes)} tone={day.overtime.unapprovedMinutes > 0 ? t.colors.warning : undefined} />,
-      footer: total(d(sheet.totals.overtime)),
+      footer: total(d(filtered ? sum((x) => x.overtimeMinutes) : sheet.totals.overtime)),
     },
     {
-      key: 'otApproved',
+      key: 'otApproved', sortKey: 'otApproved',
       title: i18n.t('timesheet.col.otApproved'),
       width: 92,
       align: 'right',
       render: (day) => <NumCell value={d(day.overtime.approvedMinutes)} tone={t.colors.success} />,
-      footer: total(d(sheet.totals.approvedOvertime)),
+      footer: total(d(filtered ? sum((x) => x.overtime.approvedMinutes) : sheet.totals.approvedOvertime)),
     },
-    { key: 'night', title: i18n.t('timesheet.col.night'), width: 70, align: 'right', render: (day) => <NumCell value={d(day.nightMinutes)} />, footer: total(d(sheet.totals.night)) },
+    { key: 'night', sortKey: 'night', title: i18n.t('timesheet.col.night'), width: 70, align: 'right', render: (day) => <NumCell value={d(day.nightMinutes)} />, footer: total(d(filtered ? sum((x) => x.nightMinutes) : sheet.totals.night)) },
     {
-      key: 'paid',
+      key: 'paid', sortKey: 'paid',
       title: i18n.t('timesheet.col.paid'),
       width: 84,
       align: 'right',
       render: (day) => <NumCell value={d(weightedMinutes(day.lines))} />,
-      footer: total(d(sheet.totals.weighted)),
+      footer: total(d(filtered ? sum((x) => weightedMinutes(x.lines)) : sheet.totals.weighted)),
     },
     ...(anyFileable
       ? [
@@ -116,9 +125,13 @@ export function TimesheetTable({ sheet, i18n, timeZone }: { sheet: TimesheetView
   ];
 
   return (
-    <GridTable
+    <>
+      <ListControls state={list} searchPlaceholder={i18n.t('list.search')} resultCount={days.length} />
+      <GridTable
       columns={columns}
-      rows={sheet.days}
+      rows={days}
+      sort={list.sort}
+      onSort={list.setSort}
       rowKey={(day) => day.date}
       rowTint={(day) => (day.overtime.unapprovedMinutes > 0 ? t.colors.warningContainer : undefined)}
       rowLabel={(day) =>
@@ -131,8 +144,9 @@ export function TimesheetTable({ sheet, i18n, timeZone }: { sheet: TimesheetView
       }
       caption={i18n.t('timesheet.daily')}
       emptyLabel={i18n.t('timesheet.noEntries')}
-      showFooter={sheet.days.length > 0}
+      showFooter={days.length > 0}
     />
+    </>
   );
 }
 

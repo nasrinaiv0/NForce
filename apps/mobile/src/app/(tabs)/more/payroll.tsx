@@ -1,4 +1,4 @@
-import { addDays, formatDuration, queryList, toCsv, type DateKey, type PayrollFlag, type PayrollRow, type SortSpec } from '@nforce/core';
+import { addDays, formatDuration, toCsv, type DateKey, type PayrollFlag, type PayrollRow } from '@nforce/core';
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
@@ -7,11 +7,12 @@ import { KpiTile } from '@/components/Charts';
 import { DataTable, type Column } from '@/components/DataTable';
 import { Pill, type Tone } from '@/components/Display';
 import { Icon } from '@/components/Icon';
-import { FilterChips, SortButton } from '@/components/ListToolbar';
+import { ListControls, useListView } from '@/components/ListView';
 import { ErrorState, LoadingBlock, Screen } from '@/components/Screen';
 import { Card, ListSection } from '@/components/Surface';
 import { Text } from '@/components/Text';
 import { Touchable } from '@/components/Touchable';
+import { payrollFields } from '@/data/listFields';
 import { errorMessage, useLockPayroll, usePayroll } from '@/data/queries';
 import { haptics } from '@/design/haptics';
 import { useTheme } from '@/design/theme';
@@ -20,8 +21,7 @@ import { useI18n } from '@/i18n';
 import { exportCsv } from '@/lib/exportCsv';
 
 const FLAG_TONE: Readonly<Record<PayrollFlag, Tone>> = { timesheet_not_approved: 'danger', missed_punch: 'danger', unapproved_overtime: 'warning' };
-type Filter = 'all' | 'blocked' | 'clear';
-type SortKey = 'name' | 'payable' | 'weighted' | 'unapproved';
+type SortKey = string;
 
 /** Payroll preparation: approved hours by pay code, blockers, export and period lock. */
 export default function PayrollScreen() {
@@ -31,20 +31,21 @@ export default function PayrollScreen() {
   const [period, setPeriod] = useState<DateKey | undefined>(undefined);
   const payroll = usePayroll(period);
   const lock = useLockPayroll();
-  const [filter, setFilter] = useState<Filter>('all');
-  const [sort, setSort] = useState<SortSpec<SortKey>>({ key: 'name', direction: 'asc' });
   const p = payroll.data;
   const blocked = (r: PayrollRow) => r.flags.includes('timesheet_not_approved') || r.flags.includes('missed_punch');
-  const rows = useMemo(
-    () =>
-      queryList(p?.rows ?? [], {
-        filters: filter === 'all' ? [] : [(r) => (filter === 'blocked' ? blocked(r) : !blocked(r))],
-        sort,
-        locale: i18n.tag,
-        accessors: { name: (r) => r.name, payable: (r) => r.payableMinutes, weighted: (r) => r.weightedMinutes, unapproved: (r) => r.unapprovedOvertimeMinutes },
-      }),
-    [p?.rows, filter, sort, i18n.tag],
-  );
+  const fields = useMemo(() => payrollFields(i18n), [i18n]);
+  const list = useListView({
+    id: 'payroll',
+    fields,
+    defaultSort: { key: 'name', direction: 'asc' },
+    searchText: (r) => [r.name],
+    quickFilters: [
+      { value: 'all', label: i18n.t('list.all') },
+      { value: 'blocked', label: i18n.t('payroll.filter.blocked'), test: blocked },
+      { value: 'clear', label: i18n.t('payroll.filter.clear'), test: (r: PayrollRow) => !blocked(r) },
+    ],
+  });
+  const rows = list.apply(p?.rows ?? []);
 
   if (payroll.isError) {
     return (
@@ -78,7 +79,7 @@ export default function PayrollScreen() {
     { key: 'name', title: i18n.t('team.col.person'), flex: 2, sortKey: 'name', render: (r) => <Text variant="subhead" weight="600" numberOfLines={1}>{r.name}</Text> },
     ...p.codes.map((code) => ({ key: code, title: code, flex: 0.9, align: 'right' as const, render: (r: PayrollRow) => <Text variant="footnote" tabular color={codeMinutes(r, code) === 0 ? 'textTertiary' : 'text'}>{formatDuration(codeMinutes(r, code))}</Text> })),
     { key: 'payable', title: i18n.t('payroll.payable'), flex: 1, align: 'right', sortKey: 'payable', render: (r) => <Text variant="footnote" tabular weight="600">{formatDuration(r.payableMinutes)}</Text> },
-    { key: 'weighted', title: i18n.t('payroll.weighted'), flex: 1, align: 'right', sortKey: 'weighted', render: (r) => <Text variant="footnote" tabular>{formatDuration(r.weightedMinutes)}</Text> },
+    { key: 'weighted', title: i18n.t('payroll.weighted'), flex: 1, align: 'right', sortKey: 'paid', render: (r) => <Text variant="footnote" tabular>{formatDuration(r.weightedMinutes)}</Text> },
     { key: 'flags', title: i18n.t('payroll.flags'), flex: 2, render: (r) => <View style={styles.flags}>{r.flags.map((f) => <Pill key={f} label={i18n.t(`payroll.flag.${f}`)} tone={FLAG_TONE[f]} />)}</View> },
   ];
 
@@ -115,26 +116,7 @@ export default function PayrollScreen() {
         </Card>
       )}
       <View style={styles.rowBetween}>
-        <FilterChips
-          options={[
-            { value: 'all', label: i18n.t('list.all'), count: p.rows.length },
-            { value: 'blocked', label: i18n.t('payroll.filter.blocked'), count: p.rows.filter(blocked).length },
-            { value: 'clear', label: i18n.t('payroll.filter.clear'), count: p.rows.filter((r) => !blocked(r)).length },
-          ]}
-          value={filter}
-          onChange={setFilter}
-        />
         <View style={styles.row}>
-          <SortButton
-            options={[
-              { key: 'name', label: i18n.t('team.sort.name') },
-              { key: 'payable', label: i18n.t('payroll.payableHours'), defaultDirection: 'desc' },
-              { key: 'weighted', label: i18n.t('timesheet.paidEquivalent'), defaultDirection: 'desc' },
-              { key: 'unapproved', label: i18n.t('payroll.unapprovedOt'), defaultDirection: 'desc' },
-            ]}
-            value={sort}
-            onChange={setSort}
-          />
           <Button title={i18n.t('reports.exportCsv')} icon="download" size="small" variant="tonal" onPress={download} />
           {!p.locked && (
             <Button
@@ -148,13 +130,19 @@ export default function PayrollScreen() {
           )}
         </View>
       </View>
+      <ListControls
+        state={list}
+        searchPlaceholder={i18n.t('team.search')}
+        resultCount={rows.length}
+        quickCounts={{ all: p.rows.length, blocked: p.rows.filter(blocked).length, clear: p.rows.filter((r) => !blocked(r)).length }}
+      />
       {lock.isError && (
         <Text variant="footnote" color="danger" accessibilityRole="alert">
           {errorMessage(lock.error, i18n.t('common.errorBody'))}
         </Text>
       )}
       {isDesktop ? (
-        <DataTable columns={columns} rows={rows} rowKey={(r) => r.userId} sort={sort} onSort={setSort} />
+        <DataTable columns={columns} rows={rows} rowKey={(r) => r.userId} sort={list.sort} onSort={list.setSort} />
       ) : (
         <ListSection footer={i18n.t('payroll.footer')}>
           {rows.map((r, idx) => (

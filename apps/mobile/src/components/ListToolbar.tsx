@@ -156,45 +156,6 @@ export function SortButton<K extends string>({
   );
 }
 
-/** Search + filters + sort, laid out for phone or desktop. */
-export function ListToolbar<V extends string, K extends string>({
-  search,
-  onSearch,
-  searchPlaceholder,
-  filters,
-  filter,
-  onFilter,
-  sortOptions,
-  sort,
-  onSort,
-  resultLabel,
-}: {
-  search: string;
-  onSearch: (v: string) => void;
-  searchPlaceholder: string;
-  filters?: readonly FilterOption<V>[];
-  filter?: V;
-  onFilter?: (v: V) => void;
-  sortOptions: readonly SortOption<K>[];
-  sort: SortSpec<K>;
-  onSort: (v: SortSpec<K>) => void;
-  resultLabel?: string;
-}) {
-  const t = useTheme();
-  return (
-    <View style={{ gap: t.space.md }}>
-      <SearchField value={search} onChange={onSearch} placeholder={searchPlaceholder} />
-      {filters !== undefined && filter !== undefined && onFilter !== undefined && <FilterChips options={filters} value={filter} onChange={onFilter} />}
-      <View style={styles.rowBetween}>
-        <Text variant="footnote" color="textSecondary" accessibilityLiveRegion="polite">
-          {resultLabel ?? ''}
-        </Text>
-        <SortButton options={sortOptions} value={sort} onChange={onSort} />
-      </View>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12 },
   searchInput: { flex: 1, paddingVertical: 8, outlineStyle: 'none' } as object,
@@ -203,5 +164,4 @@ const styles = StyleSheet.create({
   sheet: { width: '100%', maxWidth: 520, paddingTop: 4, marginBottom: 0 },
   sortRow: { flexDirection: 'row', alignItems: 'center', minHeight: 52, gap: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  rowBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
 });

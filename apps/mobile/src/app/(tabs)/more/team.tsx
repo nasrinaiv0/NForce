@@ -1,4 +1,4 @@
-import { facetCounts, formatDuration, queryList, type SortSpec } from '@nforce/core';
+import { facetCounts, formatDuration } from '@nforce/core';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -6,11 +6,12 @@ import { StyleSheet, View } from 'react-native';
 import { Chip } from '@/components/Controls';
 import { DataTable, type Column } from '@/components/DataTable';
 import { Avatar, Pill, type Tone } from '@/components/Display';
-import { ListToolbar, type FilterOption, type SortOption } from '@/components/ListToolbar';
+import { ListControls, useListView } from '@/components/ListView';
 import { EmptyState, ErrorState, LoadingBlock, Screen } from '@/components/Screen';
 import { Card, ListSection } from '@/components/Surface';
 import { Text } from '@/components/Text';
 import { Touchable } from '@/components/Touchable';
+import { teamMemberFields } from '@/data/listFields';
 import { errorMessage, useSession, useTeam } from '@/data/queries';
 import type { MemberStatus, TeamMember } from '@/data/types';
 import { useTheme } from '@/design/theme';
@@ -29,8 +30,7 @@ const STATUS_TONE: Readonly<Record<MemberStatus, Tone>> = {
 };
 const STATUS_ORDER: readonly MemberStatus[] = ['missed_punch', 'late', 'absent', 'working', 'on_break', 'not_started', 'done', 'off'];
 
-type StatusFilter = 'all' | MemberStatus;
-type SortKey = 'name' | 'status' | 'today' | 'week' | 'overtime' | 'night';
+type SortKey = string;
 
 /**
  * Team attendance in the viewer's scope: a supervisor sees their reporting
@@ -42,49 +42,23 @@ export default function TeamScreen() {
   const { isDesktop } = useResponsive();
   const session = useSession();
   const team = useTeam();
-  const [status, setStatus] = useState<StatusFilter>('all');
   const [teamName, setTeamName] = useState<string>('all');
-  const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<SortSpec<SortKey>>({ key: 'status', direction: 'asc' });
   const tz = session.data?.organization.timeZone ?? 'UTC';
-
   const members = useMemo(() => team.data ?? [], [team.data]);
   const teams = useMemo(() => [...new Set(members.map((m) => m.teamName ?? i18n.t('team.noTeam')))].sort(), [members, i18n]);
-  const counts = useMemo(() => facetCounts(members, (m) => m.status), [members]);
-  const rows = useMemo(
-    () =>
-      queryList(members, {
-        filters: [
-          (m) => status === 'all' || m.status === status,
-          (m) => teamName === 'all' || (m.teamName ?? i18n.t('team.noTeam')) === teamName,
-        ],
-        search: { text: search, fields: (m) => [m.person.name, m.person.title, m.teamName, m.managerName] },
-        sort,
-        locale: i18n.tag,
-        accessors: {
-          name: (m) => m.person.name,
-          status: (m) => STATUS_ORDER.indexOf(m.status),
-          today: (m) => m.todayMinutes,
-          week: (m) => m.weekMinutes,
-          overtime: (m) => m.weekOvertimeMinutes,
-          night: (m) => m.weekNightMinutes,
-        },
-      }),
-    [members, status, teamName, search, sort, i18n],
-  );
-
-  const statusFilters: FilterOption<StatusFilter>[] = [
-    { value: 'all', label: i18n.t('list.all'), count: members.length },
-    ...STATUS_ORDER.filter((s) => (counts.get(s) ?? 0) > 0).map((s) => ({ value: s, label: i18n.t(`team.status.${s}`), count: counts.get(s) ?? 0 })),
-  ];
-  const sortOptions: SortOption<SortKey>[] = [
-    { key: 'status', label: i18n.t('team.sort.status') },
-    { key: 'name', label: i18n.t('team.sort.name') },
-    { key: 'today', label: i18n.t('team.sort.today'), defaultDirection: 'desc' },
-    { key: 'week', label: i18n.t('team.sort.week'), defaultDirection: 'desc' },
-    { key: 'overtime', label: i18n.t('team.sort.overtime'), defaultDirection: 'desc' },
-    { key: 'night', label: i18n.t('team.sort.night'), defaultDirection: 'desc' },
-  ];
+  const counts = facetCounts(members, (m) => m.status);
+  const fields = useMemo(() => teamMemberFields(i18n), [i18n]);
+  const list = useListView({
+    id: 'team',
+    fields,
+    defaultSort: { key: 'status', direction: 'asc' },
+    searchText: (m) => [m.person.name, m.person.title, m.teamName, m.managerName],
+    quickFilters: [
+      { value: 'all', label: i18n.t('list.all') },
+      ...STATUS_ORDER.filter((st) => (counts.get(st) ?? 0) > 0).map((st) => ({ value: st, label: i18n.t(`team.status.${st}`), test: (m: TeamMember) => m.status === st })),
+    ],
+  });
+  const rows = list.apply(members.filter((m) => teamName === 'all' || (m.teamName ?? i18n.t('team.noTeam')) === teamName));
   const open = (m: TeamMember) => router.push({ pathname: '/more/timesheets', params: { user: m.person.id } });
   const statusPill = (m: TeamMember) => (
     <Pill label={m.lateByMinutes !== undefined && m.status === 'working' ? i18n.t('team.lateBy', { time: formatDuration(m.lateByMinutes) }) : i18n.t(`team.status.${m.status}`)} tone={m.lateByMinutes !== undefined && m.status === 'working' ? 'warning' : STATUS_TONE[m.status]} dot />
@@ -124,7 +98,7 @@ export default function TeamScreen() {
     <Screen onRefresh={() => team.refetch()} maxWidth={1400}>
       <View style={[styles.summary, { gap: t.space.md }]}>
         {(['working', 'on_break', 'late', 'absent'] as const).map((s) => (
-          <Card key={s} style={styles.summaryCell} onPress={() => setStatus(status === s ? 'all' : s)} accessibilityLabel={`${i18n.t(`team.status.${s}`)}: ${counts.get(s) ?? 0}`}>
+          <Card key={s} style={styles.summaryCell} onPress={() => list.setQuick(list.quick === s ? 'all' : s)} accessibilityLabel={`${i18n.t(`team.status.${s}`)}: ${counts.get(s) ?? 0}`}>
             <Text variant="title" tabular>
               {counts.get(s) ?? 0}
             </Text>
@@ -132,18 +106,7 @@ export default function TeamScreen() {
           </Card>
         ))}
       </View>
-      <ListToolbar
-        search={search}
-        onSearch={setSearch}
-        searchPlaceholder={i18n.t('team.search')}
-        filters={statusFilters}
-        filter={status}
-        onFilter={setStatus}
-        sortOptions={sortOptions}
-        sort={sort}
-        onSort={setSort}
-        resultLabel={i18n.plural('list.results', rows.length)}
-      />
+      <ListControls state={list} searchPlaceholder={i18n.t('team.search')} resultCount={rows.length} quickCounts={{ all: members.length, ...Object.fromEntries(counts) }} />
       {teams.length > 1 && (
         <View style={styles.chips}>
           <Chip label={i18n.t('team.allTeams')} selected={teamName === 'all'} onPress={() => setTeamName('all')} />
@@ -159,7 +122,7 @@ export default function TeamScreen() {
       ) : rows.length === 0 ? (
         <EmptyState icon="team" title={i18n.t('list.noMatches')} />
       ) : isDesktop ? (
-        <DataTable columns={columns} rows={rows} rowKey={(m) => m.person.id} sort={sort} onSort={setSort} onRowPress={open} rowLabel={(m) => `${m.person.name}, ${i18n.t(`team.status.${m.status}`)}`} />
+        <DataTable columns={columns} rows={rows} rowKey={(m) => m.person.id} sort={list.sort} onSort={list.setSort} onRowPress={open} rowLabel={(m) => `${m.person.name}, ${i18n.t(`team.status.${m.status}`)}`} />
       ) : (
         <ListSection footer={i18n.t('team.scopeFooter')}>
           {rows.map((m, idx) => (

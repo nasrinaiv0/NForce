@@ -199,14 +199,28 @@ Screens only offer what the backend will accept: each profile carries the viewer
   - The person and anyone with attendance access: **attendance for the last 30 days** (attendance rate, punctuality, late days, absences, hours). With timesheet access: overtime this month (approved and pending).
   - The person, HR and owners only: **confidential** employment details (employee ID, type, hire date, tenure, regularization, work arrangement, pay grade), personal and emergency contact, and government IDs (SSS, PhilHealth, Pag-IBIG, TIN), always masked.
 
-## 16. Live mode (Supabase)
+## 16. Sorting and custom filtering on every list
+
+Every list and table has search, sorting by any column, an optional quick filter, and a **filter builder**. People add their own conditions on any column, and the list matches all or any of them.
+
+- **Conditions by column type:**
+  - text: contains, is, starts with, is empty…
+  - numbers, hours and percentages: =, ≠, >, ≥, <, ≤, between (hours are typed as `1.5` or `1:30`, percentages as `%`)
+  - dates: on, before, after, between
+  - choices: is any of, is none of (multi-select)
+  - yes/no fields
+- **Behavior:** incomplete conditions are ignored, so a half-built filter never empties a list. Active conditions show as removable chips. Tables also sort by tapping a column header. Each list remembers its sort, quick filter and conditions on the device (`state/listViews.ts`, validated on load).
+- **Where the logic lives:** in `@nforce/core` (`collections/conditions.ts`: `applyConditions`, `accessorsFor`). Each list's columns are declared once in `apps/mobile/src/data/listFields.ts`. A test runs every list's fields against real demo data, checking each field sorts, each operator runs, values from the data match, and every choice value is offered.
+- **Lists covered:** approvals; my requests; team; people; Work Center; attendance (people, exceptions, by team); executive team comparison; payroll register; administration (members, audit log, holidays, permission matrix); CRM; notifications; timesheet days; schedule week and team roster; profile direct reports and leave history.
+
+## 17. Live mode (Supabase)
 
 - **Configuration:** `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_KEY` (publishable). When they are missing the app runs the demo, so the current web deployment is unaffected.
 - **Auth:** email and password with Supabase Auth (sign in, create account with email confirmation, password reset). Sessions persist in AsyncStorage (localStorage on web). A signed-in person with no workspace creates one (`create_organization`, they become owner) or waits to be added. Routes are guarded (`Stack.Protected` plus a redirect), and **More → Account** shows the account, switches workspaces and signs out. "Explore the demo" is always available.
 - **Data:** `fetchLiveRows` reads the organization through PostgREST, paging past the 1,000-row limit. Row-level security means each person receives only what they may see. `buildLiveData` maps the rows into the same `Dataset` the demo backend computes from, so every screen works unchanged. Writes are first validated against that snapshot (same rules, same messages), then sent to the database function that enforces them: `record_attendance_event`, `submit_request`, `decide_request`, `submit_timesheet`, `add_member_by_email`, `assign_role`, `update_member`, `update_member_details`, `offboard_member`, `lock_payroll_period`, `move_deal`, `create_work_item` and `set_work_item_status`. The snapshot reloads after every write. Database error codes map to the app's error codes (`toApiError`).
 - **Limits of v1:** the snapshot covers 11 weeks of attendance and 400 days of requests. Very large organizations need server-side aggregation. Executives (aggregate-only access) receive no person-level attendance, so their organization report in live mode only covers what they may see until a server-side reporting function exists. Notification "read" state lasts for the session.
 
-## 17. Known gaps (not implemented)
+## 18. Known gaps (not implemented)
 
 - Live mode is implemented but not yet verified against the hosted Supabase project (access pending).
 - Server-side aggregation for large organizations and for executives' organization-wide reports in live mode.

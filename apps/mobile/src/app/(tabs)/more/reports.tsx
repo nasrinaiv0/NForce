@@ -1,6 +1,6 @@
 import { formatDuration, toCsv } from '@nforce/core';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/Button';
@@ -8,11 +8,13 @@ import { BarChart, HBarList, KpiTile, LineChart } from '@/components/Charts';
 import { Meter, Pill } from '@/components/Display';
 import { Icon, type IconName } from '@/components/Icon';
 import { FilterChips } from '@/components/ListToolbar';
+import { ListControls, useListView } from '@/components/ListView';
 import { PayLinesList } from '@/components/PayBreakdown';
 import { AttendanceKpis, countDelta, hours, pct, rateDelta } from '@/components/ReportKit';
 import { ErrorState, LoadingBlock, Screen } from '@/components/Screen';
 import { Card, SectionHeader } from '@/components/Surface';
 import { Text } from '@/components/Text';
+import { groupFields } from '@/data/listFields';
 import { errorMessage, useAttendanceReport, useExecutiveReport, useSession, useTimesheet } from '@/data/queries';
 import type { ExecutiveReport } from '@/data/types';
 import { useTheme } from '@/design/theme';
@@ -131,19 +133,7 @@ function ExecutiveDashboard() {
           ))
         )}
       </Card>
-      <Card style={{ gap: t.space.lg }}>
-        <SectionHeader title={i18n.t('reports.byTeam')} />
-        <HBarList
-          rows={[...r.teams].sort((a, b) => a.metrics.attendanceRate - b.metrics.attendanceRate).map((x) => ({
-            label: x.name,
-            sublabel: i18n.t('reports.teamLine', { count: x.headcount, ot: hours(x.metrics.overtimeMinutes), nd: hours(x.metrics.nightMinutes) }),
-            value: x.metrics.attendanceRate,
-            flag: x.metrics.attendanceRate < 0.95 ? <Pill label={i18n.t('reports.belowTarget')} tone="warning" icon="warning" /> : undefined,
-          }))}
-          format={(v) => pct(i18n, v)}
-          target={0.95}
-        />
-      </Card>
+      <TeamComparison teams={r.teams} i18n={i18n} />
       <Card style={{ gap: t.space.md }}>
         <SectionHeader title={i18n.t('reports.approvalsSla')} />
         <View style={[styles.kpis, { gap: t.space.md }]}>
@@ -217,6 +207,30 @@ function ExecutiveDashboard() {
         {i18n.t('reports.privacyNote')}
       </Text>
     </Screen>
+  );
+}
+
+/** Team comparison bars: sortable by any metric and filterable (e.g. "OT share > 5%"). */
+function TeamComparison({ teams, i18n }: { teams: ExecutiveReport['teams']; i18n: I18n }) {
+  const t = useTheme();
+  const fields = useMemo(() => groupFields<ExecutiveReport['teams'][number]>(i18n), [i18n]);
+  const list = useListView({ id: 'exec-teams', fields, defaultSort: { key: 'attendance', direction: 'asc' }, searchText: (x) => [x.name] });
+  const rows = list.apply(teams);
+  return (
+    <Card style={{ gap: t.space.lg }}>
+      <SectionHeader title={i18n.t('reports.byTeam')} />
+      <ListControls state={list} searchPlaceholder={i18n.t('list.search')} resultCount={rows.length} />
+      <HBarList
+        rows={rows.map((x) => ({
+          label: x.name,
+          sublabel: i18n.t('reports.teamLine', { count: x.headcount, ot: hours(x.metrics.overtimeMinutes), nd: hours(x.metrics.nightMinutes) }),
+          value: x.metrics.attendanceRate,
+          flag: x.metrics.attendanceRate < 0.95 ? <Pill label={i18n.t('reports.belowTarget')} tone="warning" icon="warning" /> : undefined,
+        }))}
+        format={(v) => pct(i18n, v)}
+        target={0.95}
+      />
+    </Card>
   );
 }
 

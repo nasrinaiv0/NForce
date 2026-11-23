@@ -1,4 +1,4 @@
-import { addDays, formatDuration, queryList, toCsv, type SortSpec } from '@nforce/core';
+import { addDays, formatDuration, toCsv } from '@nforce/core';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -10,11 +10,13 @@ import { SegmentedControl } from '@/components/Controls';
 import { DataTable, type Column } from '@/components/DataTable';
 import { Avatar, Pill, type Tone } from '@/components/Display';
 import { Icon } from '@/components/Icon';
-import { FilterChips, SortButton } from '@/components/ListToolbar';
+import { FilterChips } from '@/components/ListToolbar';
+import { ListControls, useListView } from '@/components/ListView';
 import { EmptyState, ErrorState, LoadingBlock, Screen } from '@/components/Screen';
 import { Card, ListSection, SectionHeader } from '@/components/Surface';
 import { Text } from '@/components/Text';
 import { Touchable } from '@/components/Touchable';
+import { attendancePeopleFields, exceptionFields, groupFields } from '@/data/listFields';
 import { errorMessage, useAttendanceReport, useSession } from '@/data/queries';
 import type { AttendanceFlag, AttendanceReport, ReportScope } from '@/data/types';
 import { useTheme } from '@/design/theme';
@@ -24,7 +26,7 @@ import { exportCsv } from '@/lib/exportCsv';
 
 const FLAG_TONE: Readonly<Record<AttendanceFlag['kind'], Tone>> = { late: 'warning', absent: 'danger', missed_punch: 'danger' };
 type PersonRow = AttendanceReport['people'][number];
-type SortKey = 'name' | 'attendance' | 'punctuality' | 'late' | 'worked' | 'overtime';
+type SortKey = string;
 
 export default function AttendanceScreen() {
   const t = useTheme();
@@ -101,21 +103,7 @@ export default function AttendanceScreen() {
             </Card>
           </View>
 
-          {r.groups.length > 0 && (
-            <Card style={{ gap: t.space.lg }}>
-              <SectionHeader title={i18n.t('reports.byTeam')} />
-              <HBarList
-                rows={[...r.groups].sort((a, b) => a.metrics.attendanceRate - b.metrics.attendanceRate).map((g) => ({
-                  label: g.name,
-                  sublabel: i18n.t('reports.punctualityShort', { value: pct(i18n, g.metrics.punctualityRate) }),
-                  value: g.metrics.attendanceRate,
-                  flag: g.metrics.attendanceRate < 0.95 ? <Pill label={i18n.t('reports.belowTarget')} tone="warning" icon="warning" /> : undefined,
-                }))}
-                format={(v) => pct(i18n, v)}
-                target={0.95}
-              />
-            </Card>
-          )}
+          {r.groups.length > 0 && <GroupBars groups={r.groups} i18n={i18n} />}
 
           {r.people.length > 0 && <PeopleBreakdown report={r} i18n={i18n} isDesktop={isDesktop} />}
           {r.exceptions.length > 0 && <Exceptions report={r} i18n={i18n} />}
@@ -125,25 +113,34 @@ export default function AttendanceScreen() {
   );
 }
 
+function GroupBars({ groups, i18n }: { groups: AttendanceReport['groups']; i18n: I18n }) {
+  const t = useTheme();
+  const fields = useMemo(() => groupFields<AttendanceReport['groups'][number]>(i18n), [i18n]);
+  const list = useListView({ id: 'attendance-groups', fields, defaultSort: { key: 'attendance', direction: 'asc' }, searchText: (g) => [g.name] });
+  const rows = list.apply(groups);
+  return (
+            <Card style={{ gap: t.space.lg }}>
+              <SectionHeader title={i18n.t('reports.byTeam')} />
+              <ListControls state={list} searchPlaceholder={i18n.t('list.search')} resultCount={rows.length} />
+              <HBarList
+                rows={rows.map((g) => ({
+                  label: g.name,
+                  sublabel: i18n.t('reports.punctualityShort', { value: pct(i18n, g.metrics.punctualityRate) }),
+                  value: g.metrics.attendanceRate,
+                  flag: g.metrics.attendanceRate < 0.95 ? <Pill label={i18n.t('reports.belowTarget')} tone="warning" icon="warning" /> : undefined,
+                }))}
+                format={(v) => pct(i18n, v)}
+                target={0.95}
+              />
+            </Card>
+  );
+}
+
 function PeopleBreakdown({ report, i18n, isDesktop }: { report: AttendanceReport; i18n: I18n; isDesktop: boolean }) {
   const t = useTheme();
-  const [sort, setSort] = useState<SortSpec<SortKey>>({ key: 'attendance', direction: 'asc' });
-  const rows = useMemo(
-    () =>
-      queryList(report.people, {
-        sort,
-        locale: i18n.tag,
-        accessors: {
-          name: (p) => p.person.name,
-          attendance: (p) => p.metrics.attendanceRate,
-          punctuality: (p) => p.metrics.punctualityRate,
-          late: (p) => p.metrics.lateDays,
-          worked: (p) => p.metrics.workedMinutes,
-          overtime: (p) => p.metrics.overtimeMinutes,
-        },
-      }),
-    [report.people, sort, i18n.tag],
-  );
+  const fields = useMemo(() => attendancePeopleFields(i18n), [i18n]);
+  const list = useListView({ id: 'attendance-people', fields, defaultSort: { key: 'attendance', direction: 'asc' }, searchText: (p) => [p.person.name, p.teamName] });
+  const rows = list.apply(report.people);
   const download = () =>
     void exportCsv(
       `nforce-attendance-${report.from}-${report.to}.csv`,
@@ -182,34 +179,25 @@ function PeopleBreakdown({ report, i18n, isDesktop }: { report: AttendanceReport
     },
     { key: 'att', title: i18n.t('reports.attendanceRate'), flex: 1.1, align: 'right', sortKey: 'attendance', render: (p) => <Text variant="footnote" tabular weight="600" color={p.metrics.attendanceRate < 0.95 ? 'warning' : 'text'}>{pct(i18n, p.metrics.attendanceRate)}</Text> },
     { key: 'pun', title: i18n.t('reports.punctuality'), flex: 1.1, align: 'right', sortKey: 'punctuality', render: (p) => <Text variant="footnote" tabular>{pct(i18n, p.metrics.punctualityRate)}</Text> },
-    { key: 'abs', title: i18n.t('reports.absences'), flex: 0.9, align: 'right', render: (p) => <Text variant="footnote" tabular>{p.metrics.absentDays}</Text> },
-    { key: 'late', title: i18n.t('reports.lateArrivals'), flex: 0.9, align: 'right', sortKey: 'late', render: (p) => <Text variant="footnote" tabular>{p.metrics.lateDays}</Text> },
+    { key: 'abs', title: i18n.t('reports.absences'), flex: 0.9, align: 'right', sortKey: 'absences', render: (p) => <Text variant="footnote" tabular>{p.metrics.absentDays}</Text> },
+    { key: 'late', title: i18n.t('reports.lateArrivals'), flex: 0.9, align: 'right', sortKey: 'lateDays', render: (p) => <Text variant="footnote" tabular>{p.metrics.lateDays}</Text> },
     { key: 'worked', title: i18n.t('reports.workedHours'), flex: 1, align: 'right', sortKey: 'worked', render: (p) => <Text variant="footnote" tabular>{hours(p.metrics.workedMinutes)}</Text> },
     { key: 'ot', title: i18n.t('team.col.overtime'), flex: 0.9, align: 'right', sortKey: 'overtime', render: (p) => <Text variant="footnote" tabular>{hours(p.metrics.overtimeMinutes)}</Text> },
-    { key: 'nd', title: i18n.t('team.col.night'), flex: 0.9, align: 'right', render: (p) => <Text variant="footnote" tabular>{hours(p.metrics.nightMinutes)}</Text> },
+    { key: 'nd', title: i18n.t('team.col.night'), flex: 0.9, align: 'right', sortKey: 'night', render: (p) => <Text variant="footnote" tabular>{hours(p.metrics.nightMinutes)}</Text> },
   ];
   return (
     <View style={{ gap: t.space.md }}>
       <View style={styles.rowBetween}>
         <SectionHeader title={i18n.t('reports.byPerson')} />
         <View style={styles.row}>
-          <SortButton
-            options={[
-              { key: 'attendance', label: i18n.t('reports.attendanceRate') },
-              { key: 'punctuality', label: i18n.t('reports.punctuality') },
-              { key: 'late', label: i18n.t('reports.lateArrivals'), defaultDirection: 'desc' },
-              { key: 'overtime', label: i18n.t('pay.overtime'), defaultDirection: 'desc' },
-              { key: 'worked', label: i18n.t('reports.workedHours'), defaultDirection: 'desc' },
-              { key: 'name', label: i18n.t('team.sort.name') },
-            ]}
-            value={sort}
-            onChange={setSort}
-          />
           <Button title={i18n.t('reports.exportCsv')} icon="download" size="small" variant="tonal" onPress={download} />
         </View>
       </View>
-      {isDesktop ? (
-        <DataTable columns={columns} rows={rows} rowKey={(p) => p.person.id} sort={sort} onSort={setSort} onRowPress={open} rowLabel={(p) => `${p.person.name}, ${pct(i18n, p.metrics.attendanceRate)}`} />
+      <ListControls state={list} searchPlaceholder={i18n.t('team.search')} resultCount={rows.length} />
+      {rows.length === 0 ? (
+        <EmptyState icon="search" title={i18n.t('list.noMatches')} />
+      ) : isDesktop ? (
+        <DataTable columns={columns} rows={rows} rowKey={(p) => p.person.id} sort={list.sort} onSort={list.setSort} onRowPress={open} rowLabel={(p) => `${p.person.name}, ${pct(i18n, p.metrics.attendanceRate)}`} />
       ) : (
         <ListSection>
           {rows.map((p, idx) => (
@@ -238,21 +226,27 @@ function PeopleBreakdown({ report, i18n, isDesktop }: { report: AttendanceReport
 
 function Exceptions({ report, i18n }: { report: AttendanceReport; i18n: I18n }) {
   const t = useTheme();
-  const [kind, setKind] = useState<'all' | AttendanceFlag['kind']>('all');
-  const rows = report.exceptions.filter((e) => kind === 'all' || e.kind === kind);
+  const fields = useMemo(() => exceptionFields(i18n), [i18n]);
+  const list = useListView({
+    id: 'attendance-exceptions',
+    fields,
+    defaultSort: { key: 'date', direction: 'desc' },
+    searchText: (e) => [e.person.name],
+    quickFilters: [
+      { value: 'all', label: i18n.t('list.all') },
+      ...(['late', 'absent', 'missed_punch'] as const).map((k) => ({ value: k, label: i18n.t(`reports.flag.${k}`), test: (e: AttendanceFlag) => e.kind === k })),
+    ],
+  });
+  const rows = list.apply(report.exceptions);
   const count = (k: AttendanceFlag['kind']) => report.exceptions.filter((e) => e.kind === k).length;
   return (
     <View style={{ gap: t.space.md }}>
       <SectionHeader title={i18n.t('reports.exceptions')} />
-      <FilterChips
-        options={[
-          { value: 'all', label: i18n.t('list.all'), count: report.exceptions.length },
-          { value: 'late', label: i18n.t('reports.flag.late'), count: count('late') },
-          { value: 'absent', label: i18n.t('reports.flag.absent'), count: count('absent') },
-          { value: 'missed_punch', label: i18n.t('reports.flag.missed_punch'), count: count('missed_punch') },
-        ]}
-        value={kind}
-        onChange={setKind}
+      <ListControls
+        state={list}
+        searchPlaceholder={i18n.t('team.search')}
+        resultCount={rows.length}
+        quickCounts={{ all: report.exceptions.length, late: count('late'), absent: count('absent'), missed_punch: count('missed_punch') }}
       />
       {rows.length === 0 ? (
         <EmptyState icon="checkCircle" title={i18n.t('list.noMatches')} />

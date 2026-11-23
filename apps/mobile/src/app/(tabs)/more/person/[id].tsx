@@ -1,16 +1,18 @@
 import { UserId, formatDuration, type ApprovalStatus, type DateKey } from '@nforce/core';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/Button';
 import { Avatar, Meter, Pill, type Tone } from '@/components/Display';
 import { Icon, type IconName } from '@/components/Icon';
+import { ListControls, useListView } from '@/components/ListView';
 import { requestTitle } from '@/components/requestText';
 import { ErrorState, LoadingBlock, Screen } from '@/components/Screen';
 import { Card, SectionHeader } from '@/components/Surface';
 import { Text } from '@/components/Text';
 import { Touchable } from '@/components/Touchable';
+import { directReportFields, myRequestFields } from '@/data/listFields';
 import { errorMessage, useOffboardEmployee, useProfile, useSession } from '@/data/queries';
 import type { PersonProfile } from '@/data/types';
 import { haptics } from '@/design/haptics';
@@ -371,10 +373,12 @@ function PersonalCard({ p, i18n }: { p: PersonProfile; i18n: I18n }) {
 
 function LeaveHistoryCard({ p, i18n }: { p: PersonProfile; i18n: I18n }) {
   const t = useTheme();
-  const items = p.leaveHistory ?? [];
+  const list = useListView({ id: 'profile-leave', fields: useMemo(() => myRequestFields(i18n), [i18n]), defaultSort: { key: 'submitted', direction: 'desc' } });
+  const items = list.apply(p.leaveHistory ?? []);
   return (
     <Card style={{ gap: t.space.sm }}>
       <SectionHeader title={i18n.t('people.recentLeave')} />
+      {(p.leaveHistory ?? []).length > 1 && <ListControls state={list} resultCount={items.length} />}
       {items.length === 0 ? (
         <Text variant="subhead" color="textSecondary">
           {i18n.t('people.noLeave')}
@@ -405,12 +409,20 @@ function LeaveHistoryCard({ p, i18n }: { p: PersonProfile; i18n: I18n }) {
 
 function DirectReports({ p, i18n, columns }: { p: PersonProfile; i18n: I18n; columns: number }) {
   const t = useTheme();
+  const list = useListView({
+    id: 'profile-reports',
+    fields: useMemo(() => directReportFields(i18n), [i18n]),
+    defaultSort: { key: 'name', direction: 'asc' },
+    searchText: (r) => [r.person.name, r.person.title, r.teamName],
+  });
+  const reports = list.apply(p.directReports);
   if (p.directReports.length === 0) return null;
   return (
     <View style={{ gap: t.space.sm }}>
       <SectionHeader title={i18n.t('people.directReports', { count: p.directReports.length })} />
+      {p.directReports.length > 1 && <ListControls state={list} searchPlaceholder={i18n.t('people.search')} resultCount={reports.length} />}
       <View style={[styles.reports, { gap: t.space.md }]}>
-        {p.directReports.map((r) => (
+        {reports.map((r) => (
           <Touchable
             key={r.person.id}
             onPress={() => router.push({ pathname: '/more/person/[id]', params: { id: r.person.id } })}

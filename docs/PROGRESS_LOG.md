@@ -76,6 +76,23 @@ This log records meaningful project progress. Update it in the same pull request
 - **Known gaps:** The master is a JPEG; a vector (SVG/PDF) original is still preferred for print and store marketing. Not checked on physical devices or launchers.
 - **Next steps:** Add the vector master when available and re-run the generator.
 
+## 2026-11-23 — Sorting and custom filtering on every list
+
+- **PR / issue:** #2.
+- **Status:** Implemented and tested.
+- **Summary:**
+  - New shared filter model in `@nforce/core` (`collections/conditions.ts`). Operators depend on the column type (text, number, hours, percent, date, choice, yes/no), conditions can match all or any, incomplete conditions are ignored, and any column can be the sort key (choices sort in their natural order, such as urgent → low).
+  - New `ListControls` / `useListView` UI: search, quick filter with counts, sort menu, a filter builder sheet, removable condition chips, and a saved view per list.
+  - Tables sort by tapping column headers. Timesheet totals follow the visible rows when filtered.
+  - Applied to every list: approvals, my requests, team, people, Work Center, attendance (people, exceptions, by team), executive team comparison, payroll, administration (members, audit, holidays, permission matrix), CRM (KPIs follow the filters), notifications, timesheet days, schedule week and team roster, and profile direct reports and leave history. CRM, notifications, timesheet, schedule, profile and the permission matrix had no sorting or filtering before.
+  - Removed the old combined toolbar component.
+- **Validation performed (2026-11-23):**
+  - `npm run typecheck` and `npm run lint` passed.
+  - Core **159 tests** passed (12 new for conditions and sorting; branch coverage 91.2%).
+  - App **151 tests** passed. 5 new tests run every list's fields against real demo data: every field sorts both ways, every operator runs, data values match, and every choice value is offered.
+  - In Chromium, on the team list, two custom conditions ("This week ≥ 8h", "Role is any of Staff") filtered 11 people to 6, showed as chips, and survived a page reload. Tapping the "Worked" header sorted the timesheet. No page errors.
+- **Found by tests:** "is not" was missing for hour (duration) columns; added.
+
 ## 2026-11-23 — Live mode: Supabase Auth, workspaces and the live data client
 
 - **PR / issue:** #2.

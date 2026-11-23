@@ -3,10 +3,12 @@ import { useMemo } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { KpiTile } from '@/components/Charts';
+import { ListControls, useListView } from '@/components/ListView';
 import { Pill, type Tone } from '@/components/Display';
 import { ErrorState, LoadingBlock, Screen } from '@/components/Screen';
 import { Card } from '@/components/Surface';
 import { Text } from '@/components/Text';
+import { dealFields } from '@/data/listFields';
 import { errorMessage, useDeals } from '@/data/queries';
 import { useTheme } from '@/design/theme';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -20,7 +22,21 @@ export default function CrmScreen() {
   const i18n = useI18n();
   const { isDesktop } = useResponsive();
   const deals = useDeals();
-  const summary = useMemo(() => pipelineSummary(deals.data ?? []), [deals.data]);
+  const list = useListView({
+    id: 'crm',
+    fields: useMemo(() => dealFields(i18n), [i18n]),
+    defaultSort: { key: 'close', direction: 'asc' },
+    searchText: (d) => [d.name, d.account, d.ownerName],
+    quickFilters: [
+      { value: 'all', label: i18n.t('list.all') },
+      { value: 'open', label: i18n.t('crm.open'), test: (d: Deal) => d.stage !== 'won' && d.stage !== 'lost' },
+      { value: 'won', label: i18n.t('crm.stage.won'), test: (d: Deal) => d.stage === 'won' },
+      { value: 'lost', label: i18n.t('crm.stage.lost'), test: (d: Deal) => d.stage === 'lost' },
+    ],
+  });
+  const shown = list.apply(deals.data ?? []);
+  // KPIs follow the filters, so a filtered view shows its own forecast.
+  const summary = pipelineSummary(shown);
   if (deals.isError) {
     return (
       <Screen>
@@ -36,7 +52,7 @@ export default function CrmScreen() {
     );
   }
   const money = (minor: number) => formatMoney(i18n, minor, deals.data?.[0]?.currency ?? 'PHP');
-  const board = DEAL_STAGES.map((stage) => ({ stage, deals: (deals.data ?? []).filter((d) => d.stage === stage) }));
+  const board = DEAL_STAGES.map((stage) => ({ stage, deals: shown.filter((d) => d.stage === stage) })).filter((b) => b.deals.length > 0 || list.activeCount === 0);
   const column = (stage: Deal['stage'], list: Deal[]) => (
     <View key={stage} style={[styles.column, { gap: t.space.sm, width: isDesktop ? undefined : 260, flex: isDesktop ? 1 : undefined }]}>
       <View style={styles.rowBetween}>
@@ -71,6 +87,7 @@ export default function CrmScreen() {
         <KpiTile label={i18n.t('crm.won')} value={money(summary.wonAmountMinor)} />
         <KpiTile label={i18n.t('crm.winRate')} value={i18n.number(summary.winRate, { style: 'percent' })} />
       </View>
+      <ListControls state={list} searchPlaceholder={i18n.t('list.search')} resultCount={shown.length} />
       <Text variant="footnote" color="textSecondary">
         {i18n.t('crm.readOnly')}
       </Text>
