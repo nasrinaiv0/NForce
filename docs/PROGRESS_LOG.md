@@ -76,6 +76,14 @@ This log records meaningful project progress. Update it in the same pull request
 - **Known gaps:** The master is a JPEG; a vector (SVG/PDF) original is still preferred for print and store marketing. Not checked on physical devices or launchers.
 - **Next steps:** Add the vector master when available and re-run the generator.
 
+## 2026-11-23 — Vercel web deployment configuration
+
+- **PR / issue:** #2.
+- **Status:** Implemented and verified locally. Not yet verified on Vercel at the time of writing.
+- **Summary:** Vercel deployments returned 404 because the project had no framework or build settings. It published the repository root, which has no `index.html` (the build log shows no install and an 84 ms "build"). Added `vercel.json`: `npm ci`, `npm run build:web` (Expo web export of `apps/mobile`), output `apps/mobile/dist`, a fallback to `index.html` so deep links work in the single-page app, and long-lived caching for hashed bundles.
+- **Validation performed:** `npm run build:web` exported `apps/mobile/dist`. Served it with an index fallback; `/` and `/more/attendance` rendered in Chromium with no page errors.
+- **Known gaps:** The production domain deploys from `main`, so it shows the app only after PR #2 is merged. Preview URLs are behind Vercel authentication (the project's deployment protection setting).
+
 ## 2026-11-23 — Attendance & executive reports, all planned modules, owner access model, compact desktop Home
 
 - **PR / issue:** Not yet opened (branch `claude/vigilant-maxwell-mkbi61`).
