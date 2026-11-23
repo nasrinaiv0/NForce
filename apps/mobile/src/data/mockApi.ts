@@ -9,6 +9,10 @@ import {
   assignableRoles,
   authorize,
   canAssignRole,
+  ROLE_TEMPLATES,
+  canManageMember,
+  cancelApproval,
+  rerouteApproval,
   planOffboarding,
   authorizeOvertime,
   buildDayRecord,
@@ -268,6 +272,23 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     byId.set(next.id, next);
     rebuildOrg();
   };
+  /**
+   * Keep pending requests on the current reporting line after any change to
+   * the organization: a departed person's own requests are cancelled, and
+   * requests waiting on someone who moved, left or lost approval rights go to
+   * whoever approves for that person now. Mirrors SQL reroute_pending_requests.
+   */
+  const reroutePending = () => {
+    for (const r of requests) {
+      if (r.state.status !== 'pending') continue;
+      if (offboarded.has(r.state.requesterId)) {
+        r.state = cancelApproval(r.state);
+        continue;
+      }
+      const next = rerouteApproval(r.state, orgMembers);
+      if (next.ok) r.state = next.value;
+    }
+  };
   const person = (id: UserId): DirectoryPerson => {
     const p = byId.get(id);
     if (p === undefined) throw new ApiError('not_found', 'That person is not in this organization.');
@@ -278,7 +299,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
   const subjectOf = (p: DirectoryPerson): Subject => ({
     userId: p.id,
     organizationId: ORG,
-    status: 'active',
+    status: offboarded.has(p.id) ? 'ended' : 'active',
     roles: [p.role],
     teamIds: p.teamId !== undefined ? [p.teamId] : [],
     departmentId: p.departmentId,
@@ -295,6 +316,18 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     managerChain: chainOf(p),
     ...(p.teamId !== undefined ? { teamId: p.teamId } : {}),
   });
+  const memberTarget = (p: DirectoryPerson) => ({ userId: p.id, roles: [p.role], resource: resourceOf(p) });
+  const memberAccess = (me: DirectoryPerson, p: DirectoryPerson) => {
+    const s = subjectOf(me);
+    const active = !offboarded.has(p.id);
+    const canChangeRole = active && canManageMember(s, memberTarget(p), 'change_role', { now: now() }).allowed;
+    return {
+      canEdit: active && canManageMember(s, memberTarget(p), 'edit', { now: now() }).allowed,
+      canChangeRole,
+      canOffboard: active && canManageMember(s, memberTarget(p), 'offboard', { now: now() }).allowed,
+      assignableRoles: canChangeRole ? ROLE_TEMPLATES.filter((role) => canManageMember(s, memberTarget(p), 'change_role', { newRole: role, now: now() }).allowed) : [],
+    };
+  };
   const can = (permission: Permission, target: DirectoryPerson) => authorize(subjectOf(actor()), permission, resourceOf(target), now()).allowed;
   const ensure = (permission: Permission, target: DirectoryPerson) => {
     const d = authorize(subjectOf(actor()), permission, resourceOf(target), now());
@@ -710,7 +743,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
   const evaluate = (me: DirectoryPerson, input: TimeOffInput) => {
     const base = { organizationId: ORG, userId: me.id, start: input.start, end: input.end };
     const existing = requests
-      .filter((r) => r.state.requesterId === me.id && r.state.status !== 'returned')
+      .filter((r) => r.state.requesterId === me.id && (r.state.status === 'pending' || r.state.status === 'approved'))
       .flatMap((r) => (r.payload.kind === 'leave' || r.payload.kind === 'day_off' ? [{ start: r.payload.start, end: r.payload.end }] : []));
     const draft =
       input.kind === 'day_off'
@@ -773,10 +806,12 @@ export function createMockApi(options: MockApiOptions): NForceApi {
   const approvalRecords = (people: readonly DirectoryPerson[]) => {
     const ids = new Set(people.map((p) => p.id));
     return requests
-      .filter((r) => ids.has(r.state.requesterId))
+      // Cancelled requests (the requester left) were never decided: not part of turnaround.
+      .filter((r) => ids.has(r.state.requesterId) && r.state.status !== 'cancelled')
       .map((r) => {
+        const status = r.state.status as 'pending' | 'approved' | 'returned';
         const decided = r.state.status === 'pending' ? undefined : [...r.state.steps].reverse().find((x) => x.decidedAt !== undefined)?.decidedAt;
-        return { kind: r.kind, submittedAt: r.submittedAt, status: r.state.status, ...(decided !== undefined ? { decidedAt: decided } : {}) };
+        return { kind: r.kind, submittedAt: r.submittedAt, status, ...(decided !== undefined ? { decidedAt: decided } : {}) };
       });
   };
 
@@ -1022,6 +1057,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         const r = requests.find((x) => x.id === id);
         if (r === undefined) throw new ApiError('not_found', 'This request no longer exists.');
         const requester = person(r.state.requesterId);
+        if (requester.id === me.id) throw new ApiError('self_approval', 'You cannot decide your own request.');
         const inChain = currentApprovers(r.state).includes(me.id);
         if (r.state.status === 'pending' && (inChain || isOwner(me))) ensure(DECIDE_PERMISSION[r.kind], requester);
         const override = !inChain && isOwner(me);
@@ -1270,15 +1306,25 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         const s = subjectOf(me);
         const target = person(id);
         if (offboarded.has(id)) throw new ApiError('already_inactive', 'This person has been offboarded.');
-        if (!authorize(s, 'people.manage', resourceOf(target), now()).allowed) throw new ApiError('forbidden', "You can't edit this employee.");
+        const deny = (reason: string) => {
+          const messages: Record<string, string> = {
+            self_management: "You can't change your own role or reporting line. Ask HR or an owner.",
+            protected_member: 'Only an organization owner can manage an owner.',
+            escalation: 'You can only change roles when you hold all of the access involved.',
+          };
+          throw new ApiError(reason === 'missing_permission' || reason === 'out_of_scope' ? 'forbidden' : reason, messages[reason] ?? "You can't edit this employee.");
+        };
+        const edit = canManageMember(s, memberTarget(target), 'edit', { now: now() });
+        if (!edit.allowed) deny(edit.reason);
         if (patch.role !== undefined && patch.role !== target.role) {
-          const assign = canAssignRole(s, patch.role, { targetUserId: id, now: now() });
-          if (!assign.allowed) throw new ApiError(assign.reason, 'You can only assign roles whose permissions you hold.');
+          const change = canManageMember(s, memberTarget(target), 'change_role', { newRole: patch.role, now: now() });
+          if (!change.allowed) deny(change.reason);
           if (target.role === 'owner' && people().filter((p) => p.role === 'owner').length <= 1) throw new ApiError('last_owner', 'An organization must keep at least one owner.');
         }
         let next: DirectoryPerson = { ...target, ...(patch.title !== undefined && patch.title.trim().length > 1 ? { title: patch.title.trim() } : {}), ...(patch.role !== undefined ? { role: patch.role } : {}) };
         if (patch.managerId !== undefined && patch.managerId !== target.managerId) {
           if (patch.managerId === id) throw new ApiError('invalid', 'Someone cannot report to themselves.');
+          if (!byId.has(patch.managerId) || offboarded.has(patch.managerId)) throw new ApiError('invalid', 'Choose an active manager.');
           next = { ...next, managerId: patch.managerId };
           const previous = target;
           replacePerson(next);
@@ -1289,7 +1335,8 @@ export function createMockApi(options: MockApiOptions): NForceApi {
           }
         }
         replacePerson(next);
-        audit(me.id, 'member.updated', `${target.name}${patch.role !== undefined ? ` · ${patch.role}` : ''}`);
+        reroutePending();
+        audit(me.id, 'member.updated', `${target.name}${patch.role !== undefined && patch.role !== target.role ? ` · ${patch.role}` : ''}`);
         return directoryEntry(next);
       }),
 
@@ -1297,7 +1344,12 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       respond(() => {
         const me = actor();
         const target = person(id);
-        if (!authorize(subjectOf(me), 'people.offboard', resourceOf(target), now()).allowed) throw new ApiError('forbidden', "You can't offboard this employee.");
+        const allowed = canManageMember(subjectOf(me), memberTarget(target), 'offboard', { now: now() });
+        if (!allowed.allowed) {
+          if (allowed.reason === 'self_management') throw new ApiError('self_offboarding', 'You cannot offboard yourself.');
+          if (allowed.reason === 'protected_member') throw new ApiError('protected_member', 'Only an organization owner can offboard an owner.');
+          throw new ApiError('forbidden', "You can't offboard this employee.");
+        }
         const plan = planOffboarding(
           me.id,
           id,
@@ -1311,6 +1363,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         }
         offboarded.add(id);
         rebuildOrg();
+        reroutePending();
         audit(me.id, 'member.offboarded', target.name);
       }),
 
@@ -1326,6 +1379,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
           ...directoryEntry(p),
           chain: chainOf(p).map((id) => view(person(id))),
           directReports: people().filter((x) => x.managerId === p.id).map(view),
+          access: memberAccess(me, p),
           location: p.location,
           shift: `${fmt(p.shift.start)}–${fmt(p.shift.end)}`,
           restDays: p.restDays,
@@ -1455,7 +1509,10 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         }
         // Person-level scope when granted; otherwise an org-wide aggregate (counts only).
         const scoped = teamOf(me);
-        const statuses = scoped.length > 0 ? scoped.map((m) => m.status) : people().filter((p) => p.id !== me.id).map((p) => memberStatus(p).status);
+        // Org-wide counts only for people holding team reports organization-wide (e.g. executives).
+        const orgWide = grantScope(subjectOf(me), 'reports.team', now()) === 'organization';
+        const statuses =
+          scoped.length > 0 || !orgWide ? scoped.map((m) => m.status) : people().filter((p) => p.id !== me.id).map((p) => memberStatus(p).status);
         const count = (...xs: MemberStatus[]) => statuses.filter((x) => xs.includes(x)).length;
         return {
           onShift: count('working'),

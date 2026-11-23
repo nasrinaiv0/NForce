@@ -16,7 +16,13 @@ import { err, ok, type DomainError, type Result } from '../result';
  *      at any time, which skips any outstanding supervisor review.
  *
  * Nobody can decide their own request. A manager's own request goes to the
- * next manager-tier person above them (e.g. an executive).
+ * next manager-tier person above them (e.g. an executive). When nobody above
+ * the requester can give final approval (the top of the organization, or a
+ * person with no manager), the request goes to another organization owner.
+ *
+ * When the organization changes (someone is offboarded, moves, or changes
+ * role), pending requests are re-routed with `rerouteApproval` so they never
+ * wait on someone who can no longer decide them. Decisions already made stay.
  *
  * Organization owners (holders of `org.manage`) may decide ANY request at any
  * stage as an override; the caller must verify that permission and pass
@@ -25,7 +31,7 @@ import { err, ok, type DomainError, type Result } from '../result';
 
 export type ApproverLevel = 'supervisor' | 'manager';
 export type StepStatus = 'waiting' | 'pending' | 'approved' | 'returned' | 'skipped';
-export type ApprovalStatus = 'pending' | 'approved' | 'returned';
+export type ApprovalStatus = 'pending' | 'approved' | 'returned' | 'cancelled';
 
 export interface OrgMember {
   readonly id: UserId;
@@ -100,8 +106,16 @@ export function buildApprovalChain(
     }
     if (supervisor === undefined && inTier(m, SUPERVISOR_TIER)) supervisor = id;
   }
+  // Nobody above can finalize: route to another organization owner.
+  manager ??= [...directory.values()]
+    .filter((m) => m.id !== requesterId && m.roles.includes('owner'))
+    .map((m) => m.id)
+    .sort()[0];
   if (manager === undefined) {
-    return err({ code: 'no_approver', message: 'No manager-level approver exists in the reporting line.' });
+    return err({
+      code: 'no_approver',
+      message: 'Nobody can approve your requests yet: there is no one above you. Set a manager, or add a second organization owner.',
+    });
   }
 
   const steps: ApprovalStep[] = [
@@ -168,4 +182,39 @@ export function decideApproval(
   const status: ApprovalStatus =
     decision === 'return' ? 'returned' : actingIndex === finalIndex ? 'approved' : 'pending';
   return ok({ ...state, status, steps });
+}
+
+/**
+ * Re-route a pending request after the organization changed. Decided steps
+ * are kept as history; undecided steps are rebuilt from the current
+ * reporting line. A completed supervisor review is not asked for again.
+ * Returns the same object when nothing needs to change.
+ */
+export function rerouteApproval(
+  state: ApprovalState,
+  directory: ReadonlyMap<UserId, OrgMember>,
+): Result<ApprovalState, ApprovalError> {
+  if (state.status !== 'pending') return ok(state);
+  const fresh = buildApprovalChain(state.requesterId, directory);
+  if (!fresh.ok) return fresh;
+  const decided = state.steps.filter((s) => s.status === 'approved' || s.status === 'skipped');
+  const reviewed = decided.some((s) => s.level === 'supervisor');
+  const remaining = (reviewed ? fresh.value.steps.filter((s) => s.level === 'manager') : fresh.value.steps).map(
+    (s, i): ApprovalStep => ({ level: s.level, approverId: s.approverId, status: i === 0 ? 'pending' : 'waiting' }),
+  );
+  const undecided = state.steps.filter((s) => s.status === 'pending' || s.status === 'waiting');
+  const same =
+    undecided.length === remaining.length &&
+    undecided.every((s, i) => s.approverId === remaining[i]?.approverId && s.level === remaining[i]?.level && s.status === remaining[i]?.status);
+  return same ? ok(state) : ok({ ...state, steps: [...decided, ...remaining] });
+}
+
+/** Close a pending request without a decision (e.g. the requester left). */
+export function cancelApproval(state: ApprovalState): ApprovalState {
+  if (state.status !== 'pending') return state;
+  return {
+    ...state,
+    status: 'cancelled',
+    steps: state.steps.map((s) => (s.status === 'pending' || s.status === 'waiting' ? { ...s, status: 'skipped' as const } : s)),
+  };
 }

@@ -160,17 +160,27 @@ Role templates are defined once in `@nforce/core` (`access/permissions.ts`), see
 
 | Role | Can | Cannot |
 | --- | --- | --- |
-| **Owner** (organization) | Everything, organization-wide: add, edit and offboard employees; assign any role; approve **any** request at any stage (override, audited); payroll, CRM, admin, reports | Approve their own requests; demote or offboard themselves; remove the last owner |
-| **Executive** | Organization reports (aggregates), CRM pipeline (read), final approval of managers' requests | Person-level attendance, employee edits, payroll |
+| **Owner** (organization) | Everything, organization-wide: add, edit and offboard employees (including other owners); assign any role; approve **any** request at any stage (override, audited); payroll, CRM, admin, reports | Approve their own requests; change their own role or reporting line; offboard themselves; remove the last owner |
+| **Executive** | Organization reports (aggregates), CRM pipeline (read), final approval (time off, timesheets, overtime, corrections) for everyone in their reporting line | Approvals outside their line, person-level attendance, employee edits, payroll |
 | **Manager** | Department attendance, schedules, approvals (final), team reports | Employee records, payroll |
 | **Supervisor** | Team attendance, review step of approvals, team reports | Final approval, employee records, payroll |
-| **HR** | Employee records incl. confidential fields; add, edit and offboard employees; org-wide attendance and time-off oversight | Approvals, payroll, granting roles they don't hold |
+| **HR** | Employee records incl. confidential fields; add, edit and offboard employees; org-wide attendance and time-off oversight | Approvals, payroll, granting roles they don't hold, demoting anyone with access HR lacks, managing an owner |
 | **Payroll** | Timesheets, period locking, adjustments, payroll register and export; reads punches | Employee edits, confidential HR fields, approvals |
 | **Operations** | Schedules, staffing, org-wide attendance, work assignment | Employee records, payroll, approvals |
-| **IT admin** (`org_admin`) | Workspace settings, roles and audit log | Business data (attendance, payroll, HR records) |
+| **IT admin** (`org_admin`) | Workspace settings, audit log, and role changes within IT access (staff ↔ IT admin) | Business data (attendance, payroll, HR records), editing or offboarding employees |
 | **Staff** | Their own attendance, timesheets, requests, work and directory | Anything about other people |
 
-**No privilege escalation:** a role can be assigned only by someone who already holds every one of its permissions at least as widely (`canAssignRole`, SQL `assign_role`). Nobody changes their own role. **Offboarding** reassigns direct reports to the departing person's manager and protects the last owner (`planOffboarding`, SQL `offboard_member`). All of these are tested in core, in the app's backend tests, and in SQL.
+**Hierarchy rules** (enforced in `@nforce/core`, the app backend and SQL, and tested in all three):
+
+- **Scope follows the reporting line.** "Team" scope means your direct and indirect reports. Department scope adds your department. Looking *up* your own line needs organization scope, so a manager never sees their VP's records.
+- **Approval authority follows the reporting line.** Supervisors review and the nearest manager-tier person (manager, executive or owner) gives final approval. Being named on a step is not enough: the approver must still hold the approval permission for that requester when deciding.
+- **Nobody is left without an approver.** Someone with no manager-tier person above them (the top of the organization) routes to another owner. A sole owner is told to add a manager or a second owner.
+- **Pending requests follow organization changes.** When someone is offboarded, moves, or changes role, requests waiting on them move to whoever approves now. Finished supervisor reviews are kept. A departed person's own pending requests are cancelled. (`rerouteApproval`/`cancelApproval`; SQL `reroute_pending_requests`.)
+- **Who may manage whom** (`canManageMember`; SQL `assign_role`, `update_member`, `offboard_member`): only an owner can edit, re-role or offboard an owner. A role change needs the actor to hold every permission of both the current and the new role, so nobody can grant access they don't hold or demote someone with more access. Nobody changes their own role or reporting line, or offboards themselves. Reporting lines must stay within the organization, point to an active person and contain no loops.
+- **Offboarding** ends the membership (all access stops), moves direct reports to the departing person's manager, and protects the last owner.
+- **Organizations are isolated.** Every check fails across tenants, including for another organization's owner.
+
+Screens only offer what the backend will accept: each profile carries the viewer's exact rights for that person (edit, change role, offboard, and the roles they may give).
 
 ## 14. Attendance, reports and the remaining modules
 

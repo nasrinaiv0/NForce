@@ -251,6 +251,7 @@ Confirm before implementation: initial customer scope (internal, multi-tenant Sa
 | Attendance analytics (personal/team/org) and executive reporting with CSV export | Implemented (core + app); SQL aggregate summary | `packages/core/src/reports`, `apps/mobile/src/app/(tabs)/more/{attendance,reports}.tsx` |
 | Timesheets, leave ledger, payroll periods, notifications, CRM tables in SQL | Implemented with RLS and tests | `supabase/migrations/20261125000000_workforce_records_reports.sql` |
 | People, Payroll, Administration, CRM, Notifications screens | Implemented against the in-memory backend | `apps/mobile/src/app/(tabs)/more/` |
+| Hierarchy hardening: approvals scoped to the reporting line, approver re-check, owner fallback, re-routing on organization changes, protected owners, no demotion of more-privileged people, `update_member` RPC | Implemented (core + SQL + app) and tested | `packages/core/src/access/members.ts`, `packages/core/src/approvals/chain.ts`, `supabase/migrations/20261127000000_access_hierarchy_hardening.sql` |
 | Real authentication / Supabase client | *Planned* | — |
 
 Decisions are recorded in [Architecture Decision Records](./decisions.md). Award and quality targets are in the [Award-Readiness Guide](../product/award-readiness.md).

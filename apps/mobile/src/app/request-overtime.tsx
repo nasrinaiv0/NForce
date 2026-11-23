@@ -95,6 +95,13 @@ export default function RequestOvertime() {
           <ApproverChain steps={chain.data} i18n={i18n} />
         </Card>
       )}
+      {chain.isError && (
+        <Card style={{ backgroundColor: t.colors.fill }}>
+          <Text variant="footnote" color="textSecondary" accessibilityRole="alert">
+            {errorMessage(chain.error, i18n.t('common.errorBody'))}
+          </Text>
+        </Card>
+      )}
       {submit.isError && (
         <Text variant="footnote" color="danger" accessibilityRole="alert">
           {errorMessage(submit.error, i18n.t('common.errorBody'))}

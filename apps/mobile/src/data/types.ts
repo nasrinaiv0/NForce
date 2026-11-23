@@ -275,6 +275,14 @@ export interface PersonProfile extends DirectoryEntry {
   readonly location: string;
   readonly shift: string;
   readonly restDays: readonly number[];
+  /** What the viewer may do to this person (server-computed; mirrors the RPC checks). */
+  readonly access: {
+    readonly canEdit: boolean;
+    readonly canChangeRole: boolean;
+    readonly canOffboard: boolean;
+    /** Roles the viewer may give this person (empty when roles can't be changed). */
+    readonly assignableRoles: readonly RoleTemplate[];
+  };
   /** Present only for the person themselves or people.view.sensitive holders. */
   readonly sensitive?: { readonly employeeId: string; readonly hireDate: DateKey; readonly payGrade: string; readonly emergencyContact: string };
 }

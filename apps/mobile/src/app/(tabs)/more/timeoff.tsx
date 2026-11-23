@@ -10,13 +10,13 @@ import { FilterChips, SortButton } from '@/components/ListToolbar';
 import { ErrorState, LoadingBlock, Screen } from '@/components/Screen';
 import { Card, ListSection } from '@/components/Surface';
 import { Text } from '@/components/Text';
-import { keys, queryClient, useApproverPreview, useBalances, useMyRequests } from '@/data/queries';
+import { errorMessage, keys, queryClient, useApproverPreview, useBalances, useMyRequests } from '@/data/queries';
 import type { MyRequest } from '@/data/types';
 import { useTheme } from '@/design/theme';
 import { useResponsive } from '@/hooks/useResponsive';
 import { useI18n, type I18n } from '@/i18n';
 
-const STATUS_TONE: Readonly<Record<ApprovalStatus, Tone>> = { pending: 'warning', approved: 'success', returned: 'danger' };
+const STATUS_TONE: Readonly<Record<ApprovalStatus, Tone>> = { pending: 'warning', approved: 'success', returned: 'danger', cancelled: 'neutral' };
 type StatusFilter = 'all' | ApprovalStatus;
 type SortKey = 'submitted' | 'starts';
 
@@ -68,6 +68,13 @@ export default function TimeOffScreen() {
             {i18n.t('approvals.routeTo')}
           </Text>
           <ApproverChain steps={chain.data} i18n={i18n} />
+        </Card>
+      )}
+      {chain.isError && (
+        <Card style={{ backgroundColor: t.colors.fill }}>
+          <Text variant="footnote" color="textSecondary" accessibilityRole="alert">
+            {errorMessage(chain.error, i18n.t('common.errorBody'))}
+          </Text>
         </Card>
       )}
       {balances.isError ? (

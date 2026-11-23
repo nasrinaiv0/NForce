@@ -60,17 +60,24 @@ function Form({ id, initial }: { id?: UserId; initial?: ReturnType<typeof usePro
     [people, managerSearch, id],
   );
   const assignable = session.data?.capabilities.assignableRoles ?? [];
-  const roleChoices: RoleTemplate[] = [...new Set<RoleTemplate>([...(editing && initial !== undefined ? [initial.role] : []), ...assignable])];
+  // Editing: only roles the server says the viewer may give THIS person (none when it has access they lack).
+  const roleLocked = editing && initial !== undefined && !initial.access.canChangeRole;
+  const roleChoices: RoleTemplate[] = [
+    ...new Set<RoleTemplate>([...(editing && initial !== undefined ? [initial.role, ...initial.access.assignableRoles] : assignable)]),
+  ];
   const busy = create.isPending || update.isPending;
   const error = create.error ?? update.error;
-  const valid = name.trim().length > 1 && title.trim().length > 1 && managerId !== undefined;
+  // The top of the organization has no manager; everyone else needs one.
+  const needsManager = !editing || initial?.manager !== undefined;
+  const valid = name.trim().length > 1 && title.trim().length > 1 && (managerId !== undefined || !needsManager);
 
   const save = () => {
-    if (!valid || managerId === undefined) return;
+    if (!valid) return;
     const done = { onSuccess: () => { haptics.success(); router.back(); }, onError: () => haptics.error() };
     if (editing && id !== undefined) {
-      update.mutate({ id, patch: { title, managerId, ...(role !== initial?.role ? { role } : {}) } }, done);
+      update.mutate({ id, patch: { title, ...(managerId !== undefined ? { managerId } : {}), ...(role !== initial?.role ? { role } : {}) } }, done);
     } else {
+      if (managerId === undefined) return;
       create.mutate({ name, title, role, managerId, department, ...(team !== undefined ? { teamName: team } : {}) }, done);
     }
   };
@@ -136,6 +143,10 @@ function Form({ id, initial }: { id?: UserId; initial?: ReturnType<typeof usePro
         {isSelf ? (
           <Text variant="footnote" color="textSecondary">
             {i18n.t('people.form.selfRole')}
+          </Text>
+        ) : roleLocked ? (
+          <Text variant="footnote" color="textSecondary">
+            {i18n.t(`role.${role}`)} · {i18n.t('people.form.roleLocked')}
           </Text>
         ) : (
           <>

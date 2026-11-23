@@ -177,9 +177,15 @@ export const ROLE_GRANTS: Readonly<Record<RoleTemplate, readonly Grant[]>> = {
     ...STAFF,
     ...g('organization', 'attendance.view', 'timesheet.view', 'timesheet.lock', 'timesheet.adjust', 'payroll.view', 'payroll.prepare', 'payroll.export', 'people.view'),
   ],
-  // Executives see aggregates and act as final approvers for managers' own
-  // requests; person-level attendance detail is not granted by default.
-  executive: [...STAFF, ...g('organization', 'reports.team', 'reports.organization', 'crm.view', 'timeoff.approve', 'timesheet.approve')],
+  // Executives see organization aggregates and are the final approvers for
+  // the people who report to them (managers' own requests). Approval authority
+  // follows the reporting line ("team" = direct and indirect reports), never
+  // the whole organization; person-level attendance detail is not granted.
+  executive: [
+    ...STAFF,
+    ...g('organization', 'reports.team', 'reports.organization', 'crm.view'),
+    ...g('team', 'timeoff.approve', 'timesheet.approve', 'attendance.correct'),
+  ],
   // IT / workspace administration: settings, access and audit. No business data.
   org_admin: [...STAFF, ...g('organization', 'admin.settings', 'admin.roles', 'admin.audit')],
   // Organization owner: the superior role. Every permission, organization-wide.

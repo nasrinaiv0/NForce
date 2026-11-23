@@ -101,14 +101,22 @@ export default function PersonScreen() {
           </Text>
         </Card>
       )}
-      {p.person.id !== session.data?.user.id && (session.data?.capabilities.managePeople === true || session.data?.capabilities.offboard === true) && (
+      {p.person.id !== session.data?.user.id && !p.access.canEdit && !p.access.canOffboard && (session.data?.capabilities.managePeople === true || session.data?.capabilities.offboard === true) && (
+        <Card style={[styles.row, { backgroundColor: t.colors.fill }]}>
+          <Icon name="shield" size={18} color={t.colors.textSecondary} />
+          <Text variant="footnote" color="textSecondary" style={{ flex: 1 }}>
+            {i18n.t(p.role === 'owner' ? 'people.protected' : 'people.noAccessHere')}
+          </Text>
+        </Card>
+      )}
+      {(p.access.canEdit || p.access.canOffboard) && (
         <Card style={{ gap: t.space.md }}>
           <Text variant="headline">{i18n.t('people.manage')}</Text>
           <View style={styles.row}>
-            {session.data?.capabilities.managePeople === true && (
+            {p.access.canEdit && (
               <Button title={i18n.t('people.edit')} icon="settings" variant="tonal" size="small" onPress={() => router.push({ pathname: '/employee-form', params: { id: p.person.id } })} />
             )}
-            {session.data?.capabilities.offboard === true && !confirming && (
+            {p.access.canOffboard && !confirming && (
               <Button title={i18n.t('people.offboard')} icon="logout" variant="destructive" size="small" onPress={() => setConfirming(true)} />
             )}
           </View>

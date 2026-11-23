@@ -53,6 +53,8 @@ values ('c1000000-0000-0000-0000-000000000001', (select uid from who where name 
 create function pg_temp.u(n text) returns uuid language sql as $$ select uid from who where name = n $$;
 create function pg_temp.m(n text) returns uuid language sql as $$ select mid from who where name = n $$;
 create function pg_temp.org() returns uuid language sql as $$ select 'c1000000-0000-0000-0000-000000000001'::uuid $$;
+-- The organization's local date (reports use the org time zone, not the server's).
+create function pg_temp.today() returns date language sql as $$ select (now() at time zone 'Asia/Manila')::date $$;
 
 -- Attendance for reporting and department visibility.
 select pg_temp.act_as(pg_temp.u('staff'));
@@ -186,7 +188,7 @@ do $$ begin
   perform pg_temp.expect((select status from public.memberships where id = pg_temp.m('sup')) = 'ended', 'HR can offboard an employee');
   perform pg_temp.expect((select reports_to from public.memberships where id = pg_temp.m('staff')) = pg_temp.m('mgr'), 'their reports move up to the departing manager''s manager');
 end $$;
-select pg_temp.raises($$ select public.offboard_member(pg_temp.m('owner')) $$, 'P0001', 'the last owner cannot be offboarded');
+select pg_temp.raises($$ select public.offboard_member(pg_temp.m('owner')) $$, '42501', 'HR cannot offboard the owner (only an owner manages an owner)');
 select pg_temp.raises($$ select public.offboard_member(pg_temp.m('hr')) $$, '42501', 'nobody offboards themselves');
 reset role;
 select pg_temp.act_as(pg_temp.u('sup'));
@@ -218,15 +220,15 @@ select pg_temp.raises($$ select public.move_deal('c5000000-0000-0000-0000-000000
 do $$
 declare v_groups text[];
 begin
-  select array_agg(group_name order by group_name) into v_groups from public.report_attendance_summary(pg_temp.org(), current_date - 30, current_date);
+  select array_agg(group_name order by group_name) into v_groups from public.report_attendance_summary(pg_temp.org(), pg_temp.today() - 30, pg_temp.today());
   perform pg_temp.expect(v_groups = array['Operations', 'Other'], 'groups under 3 people are folded into Other');
   perform pg_temp.expect(
-    (select present_person_days from public.report_attendance_summary(pg_temp.org(), current_date - 30, current_date) where group_name = 'Operations') = 1,
+    (select present_person_days from public.report_attendance_summary(pg_temp.org(), pg_temp.today() - 30, pg_temp.today()) where group_name = 'Operations') = 1,
     'the summary counts present person-days');
 end $$;
 reset role;
 select pg_temp.act_as(pg_temp.u('staff'));
-select pg_temp.raises($$ select * from public.report_attendance_summary(pg_temp.org(), current_date - 30, current_date) $$, '42501', 'staff cannot run organization reports');
+select pg_temp.raises($$ select * from public.report_attendance_summary(pg_temp.org(), pg_temp.today() - 30, pg_temp.today()) $$, '42501', 'staff cannot run organization reports');
 reset role;
 
 rollback;

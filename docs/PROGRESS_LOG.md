@@ -76,6 +76,31 @@ This log records meaningful project progress. Update it in the same pull request
 - **Known gaps:** The master is a JPEG; a vector (SVG/PDF) original is still preferred for print and store marketing. Not checked on physical devices or launchers.
 - **Next steps:** Add the vector master when available and re-run the generator.
 
+## 2026-11-23 — Hierarchy and organization access hardening
+
+- **PR / issue:** #2.
+- **Phase/module:** Access model (all modules).
+- **Status:** Implemented. Unit-, SQL- and render-verified. Not verified on devices.
+- **Audit findings, now fixed:**
+  1. Executives could approve time off and timesheets for anyone in the organization, and could not approve their own managers' attendance corrections (those got stuck). Approvals are now scoped to their reporting line, including corrections.
+  2. The database accepted a decision from anyone named on a step, even after they lost approval rights. `decide_request` now re-checks the permission.
+  3. Requests stayed with approvers who had been offboarded, moved or demoted. Pending requests are now re-routed after every organization change. A departed person's own pending requests are cancelled.
+  4. The owner (top of the organization) could not file requests. These now route to another owner; a sole owner gets a clear explanation.
+  5. HR could demote executives and managers (removing access HR doesn't hold) and could act on owners. Role changes now require holding both the current and the new role's access. Only owners manage owners.
+  6. There was no database function to change a reporting line or department. Added `update_member`: same organization, active manager, no loops, no self-changes.
+  7. An offboarded person kept access in the demo backend. Their membership now ends and every endpoint refuses them.
+  8. The home team summary showed organization-wide counts to supervisors with no reports. Now only roles with organization-wide team reports get those counts.
+  9. Correction requests were visible with `timesheet.view` in SQL but `attendance.view` in the app. SQL now uses `attendance.view`.
+  10. Screens offered Edit/Offboard based on global capabilities. Each profile now carries the viewer's exact rights for that person.
+- **Also fixed:** A SQL reporting test failed after 16:00 UTC because it used the server date instead of the organization's local date (Manila).
+- **Validation performed (2026-11-23):**
+  - `npm run typecheck` and `npm run lint` passed.
+  - Core **147 tests** passed (lines 99.8%, branches 91.7%). These include exhaustive checks over a 12-person organization: every approver of every person is authorized for every request kind, nobody outside a person's reporting line (other than owners) can approve for them, and nobody can approve for themselves.
+  - App **125 tests** passed, including all 9 personas through the real endpoints.
+  - `./scripts/test-db.sh` on PostgreSQL 16.15 applied 5 migrations; **131 SQL assertions** passed (43 new).
+  - Web build rendered in Chromium for HR, Owner, Manager and Executive with no page errors.
+- **Known gaps:** Same as the previous entry (no real auth/Supabase client, in-memory demo data, not device-tested). The demo has one owner, so the owner persona sees a "nobody can approve your requests" message until a second owner is added.
+
 ## 2026-11-23 — Vercel web deployment configuration
 
 - **PR / issue:** #2.

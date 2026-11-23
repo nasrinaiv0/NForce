@@ -17,4 +17,5 @@ export * from './export/csv';
 export * from './payroll/register';
 export * from './crm/pipeline';
 export * from './access/roles';
+export * from './access/members';
 export * from './people/lifecycle';

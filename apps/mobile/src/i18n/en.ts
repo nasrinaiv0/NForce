@@ -219,6 +219,7 @@ export const en = {
   'approvals.status.approved': 'Approved',
   'approvals.status.pending': 'Pending',
   'approvals.status.returned': 'Returned',
+  'approvals.status.cancelled': 'Cancelled',
   'approvals.waitingOnOthers': 'Waiting on another approver',
   'approvals.level.supervisor': 'Supervisor review',
   'approvals.level.manager': 'Manager approval',
@@ -506,6 +507,9 @@ export const en = {
   'people.form.managerSearch': 'Search managers…',
   'people.form.roleHint': 'You can only assign roles whose permissions you already hold.',
   'people.form.selfRole': 'You cannot change your own role. Ask another administrator or the owner.',
+  'people.protected': 'Only an organization owner can manage an owner.',
+  'people.noAccessHere': "You can't manage this person: they have access you don't hold. Ask an owner.",
+  'people.form.roleLocked': "You can't change this person's role: it includes access you don't hold.",
 } as const;
 
 export type MessageKey = keyof typeof en;

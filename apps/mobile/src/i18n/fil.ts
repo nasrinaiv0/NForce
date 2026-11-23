@@ -206,6 +206,7 @@ export const fil: Messages = {
   'approvals.status.approved': 'Naaprubahan',
   'approvals.status.pending': 'Nakabinbin',
   'approvals.status.returned': 'Ibinalik',
+  'approvals.status.cancelled': 'Kinansela',
   'approvals.waitingOnOthers': 'Naghihintay sa ibang approver',
   'approvals.level.supervisor': 'Review ng supervisor',
   'approvals.level.manager': 'Pag-apruba ng manager',
@@ -493,4 +494,7 @@ export const fil: Messages = {
   'people.form.managerSearch': 'Maghanap ng manager…',
   'people.form.roleHint': 'Maaari ka lang magtalaga ng role na hawak mo na ang lahat ng pahintulot.',
   'people.form.selfRole': 'Hindi mo mababago ang sarili mong role. Humingi sa ibang administrator o sa may-ari.',
+  'people.protected': 'Ang may-ari lang ng organisasyon ang puwedeng mamahala sa isang may-ari.',
+  'people.noAccessHere': 'Hindi mo mapapamahalaan ang taong ito: may access siyang wala sa iyo. Humingi sa may-ari.',
+  'people.form.roleLocked': 'Hindi mo mababago ang role ng taong ito: may kasama itong access na wala sa iyo.',
 };

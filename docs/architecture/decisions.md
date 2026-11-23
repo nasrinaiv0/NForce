@@ -64,3 +64,10 @@ Short, durable records of significant decisions. Status values: Proposed / Accep
 - **Context:** Personal, team and executive reports must reconcile, and executives should not see individual attendance by default.
 - **Decision:** Every attendance metric is computed from one `DayRecord` per person per day (`@nforce/core` `reports/attendance.ts`). Reports cover completed days through yesterday. Person-level rows are returned only when the viewer may see each person, and SQL aggregate reports fold small groups (<3 people) into "Other".
 - **Consequences:** Numbers match across levels and privacy is protected by construction. Live "today" status lives in the Team view, not in reports.
+
+## ADR-010 — Approval authority and member management follow the hierarchy
+
+- **Status:** Accepted (2026-11-23)
+- **Context:** An audit of the access model found gaps. Executives held approval rights across the whole organization instead of their reporting line, and could not approve their managers' attendance corrections. The database accepted a decision from anyone named on a step, even after losing approval rights. Requests stayed with approvers who had left or moved. The owner's own requests had no approver. HR could demote executives and act on owners.
+- **Decision:** Approval permissions for executives are scoped to their reporting line. Every decision re-checks the approver's permission for that requester. Requests with nobody above route to another owner. Pending requests are re-routed after every organization change, and a departed person's own pending requests are cancelled. Member management requires covering both the current and the new role, and owners can only be managed by owners. Migration `20261127000000_access_hierarchy_hardening.sql` mirrors the core rules.
+- **Consequences:** Access is now strictly hierarchical below the owner. Organizations with a single owner must give that owner a second owner (or a board-level manager) before the owner can file requests. HR can still update executives' records and offboard them, but changing an executive's role needs an owner.

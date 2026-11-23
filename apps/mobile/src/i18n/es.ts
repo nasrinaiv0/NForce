@@ -206,6 +206,7 @@ export const es: Messages = {
   'approvals.status.approved': 'Aprobada',
   'approvals.status.pending': 'Pendiente',
   'approvals.status.returned': 'Devuelta',
+  'approvals.status.cancelled': 'Cancelada',
   'approvals.waitingOnOthers': 'Esperando a otro aprobador',
   'approvals.level.supervisor': 'Revisión del supervisor',
   'approvals.level.manager': 'Aprobación del gerente',
@@ -493,4 +494,7 @@ export const es: Messages = {
   'people.form.managerSearch': 'Buscar gerentes…',
   'people.form.roleHint': 'Solo puedes asignar roles cuyos permisos ya tienes.',
   'people.form.selfRole': 'No puedes cambiar tu propio rol. Pídeselo a otro administrador o al propietario.',
+  'people.protected': 'Solo un propietario de la organización puede gestionar a un propietario.',
+  'people.noAccessHere': 'No puedes gestionar a esta persona: tiene accesos que tú no tienes. Pídeselo a un propietario.',
+  'people.form.roleLocked': 'No puedes cambiar el rol de esta persona: incluye accesos que tú no tienes.',
 };
