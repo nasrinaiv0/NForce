@@ -132,11 +132,12 @@ describe('hierarchical approvals', () => {
     const hrView = await api.approvals();
     expect(hrView.length).toBeGreaterThan(0); // HR sees time off org-wide…
     expect(hrView.every((a) => !a.canDecide)).toBe(true); // …but never decides
-    await rejects(api.decide(hrView[0]?.id ?? '', 'approve'), 'not_approver');
+    const pendingForHr = hrView.find((a) => a.status === 'pending');
+    await rejects(api.decide(pendingForHr?.id ?? '', 'approve'), 'not_approver');
     as('staff');
-    const notMine = hrView.find((a) => a.requester.name !== 'Jordan Lee');
+    const notMine = hrView.find((a) => a.status === 'pending' && a.requester.name !== 'Jordan Lee');
     await rejects(api.decide(notMine?.id ?? '', 'approve'), 'not_approver');
-    const mine = (await api.myRequests())[0];
+    const mine = (await api.myRequests()).find((r) => r.status === 'pending');
     await rejects(api.decide(mine?.id ?? '', 'approve'), 'self_approval');
   });
 
@@ -153,7 +154,7 @@ describe('hierarchical approvals', () => {
     await rejects(api.requestOvertime({ date: '2026-11-17', minutes: 10, reason: 'x' }), 'invalid');
     await rejects(api.requestOvertime({ date: '2026-11-17', minutes: 60, reason: ' ' }), 'reason_required');
     as('manager');
-    const ot = (await api.approvals()).find((a) => a.kind === 'overtime' && a.requester.name === 'Jordan Lee');
+    const ot = (await api.approvals()).find((a) => a.kind === 'overtime' && a.status === 'pending' && a.requester.name === 'Jordan Lee');
     await api.decide(ot?.id ?? '', 'approve');
     as('staff');
     const day = (await api.timesheet({ periodStart: '2026-11-16' })).days.find((d) => d.date === '2026-11-17');

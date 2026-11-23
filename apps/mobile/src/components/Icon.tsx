@@ -74,6 +74,11 @@ export const ICONS = {
   person2: { ios: 'person.2.badge.gearshape', android: 'manage_accounts' },
   calendarRange: { ios: 'calendar.day.timeline.left', android: 'date_range' },
   hierarchy: { ios: 'point.3.connected.trianglepath.dotted', android: 'account_tree' },
+  list: { ios: 'list.bullet', android: 'format_list_bulleted' },
+  download: { ios: 'square.and.arrow.down', android: 'download' },
+  lock: { ios: 'lock', android: 'lock' },
+  attendance: { ios: 'person.badge.clock', android: 'how_to_reg' },
+  chart: { ios: 'chart.xyaxis.line', android: 'monitoring' },
 } as const satisfies Record<string, { ios: SFSymbol; android: AndroidSymbol }>;
 
 export type IconName = keyof typeof ICONS;

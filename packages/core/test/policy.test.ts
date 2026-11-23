@@ -162,7 +162,7 @@ describe('authorize', () => {
 describe('workspace composition', () => {
   it('gives staff a personal workspace', () => {
     const s = subject(ALICE, ['staff']);
-    expect(visibleModules(s, now)).toEqual(['timesheets', 'timeoff', 'people', 'reports']);
+    expect(visibleModules(s, now)).toEqual(['attendance', 'timesheets', 'timeoff', 'people', 'reports']);
     expect(homeWidgets(s, now)).toEqual(['clock', 'next_shift', 'my_work', 'balances']);
   });
 

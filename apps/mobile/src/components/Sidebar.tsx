@@ -3,7 +3,7 @@ import { router, usePathname, type Href } from 'expo-router';
 import { Image, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useApprovals, useAttendance, useSession } from '@/data/queries';
+import { useApprovals, useAttendance, useNotifications, useSession } from '@/data/queries';
 import { useTheme } from '@/design/theme';
 import { useI18n, type MessageKey } from '@/i18n';
 import { setPreference, usePreference } from '@/state/preferences';
@@ -21,14 +21,16 @@ interface NavItem {
 }
 
 const MODULE_NAV: Partial<Record<ModuleId, Omit<NavItem, 'badge'>>> = {
+  attendance: { href: '/more/attendance', match: '/more/attendance', label: 'module.attendance', icon: 'attendance' },
   team: { href: '/more/team', match: '/more/team', label: 'module.team', icon: 'team' },
   approvals: { href: '/more/approvals', match: '/more/approvals', label: 'module.approvals', icon: 'approvals' },
   timesheets: { href: '/more/timesheets', match: '/more/timesheets', label: 'module.timesheets', icon: 'timesheets' },
   timeoff: { href: '/more/timeoff', match: '/more/timeoff', label: 'module.timeoff', icon: 'timeoff' },
-  people: { href: '/more/module/people', match: '/more/module/people', label: 'module.people', icon: 'people' },
-  payroll: { href: '/more/module/payroll', match: '/more/module/payroll', label: 'module.payroll', icon: 'payroll' },
-  reports: { href: '/more/module/reports', match: '/more/module/reports', label: 'module.reports', icon: 'reports' },
-  admin: { href: '/more/module/admin', match: '/more/module/admin', label: 'module.admin', icon: 'admin' },
+  people: { href: '/more/people', match: '/more/people', label: 'module.people', icon: 'people' },
+  payroll: { href: '/more/payroll', match: '/more/payroll', label: 'module.payroll', icon: 'payroll' },
+  reports: { href: '/more/reports', match: '/more/reports', label: 'module.reports', icon: 'reports' },
+  crm: { href: '/more/crm', match: '/more/crm', label: 'module.crm', icon: 'crm' },
+  admin: { href: '/more/admin', match: '/more/admin', label: 'module.admin', icon: 'admin' },
 };
 
 /**
@@ -47,6 +49,8 @@ export function Sidebar() {
   const approvals = useApprovals(canApprove);
   const attendance = useAttendance();
   const pending = (approvals.data ?? []).filter((a) => a.canDecide).length;
+  const notifications = useNotifications();
+  const unread = (notifications.data ?? []).filter((n) => !n.read).length;
 
   const main: NavItem[] = [
     { href: '/home', match: '/home', label: 'tabs.home', icon: 'home' },
@@ -59,6 +63,7 @@ export function Sidebar() {
     return item === undefined ? [] : [{ ...item, ...(m === 'approvals' && pending > 0 ? { badge: pending } : {}) }];
   });
   const footer: NavItem[] = [
+    { href: '/more/notifications', match: '/more/notifications', label: 'notify.title', icon: 'bell', ...(unread > 0 ? { badge: unread } : {}) },
     { href: '/more/customize', match: '/more/customize', label: 'customize.title', icon: 'palette' },
     { href: '/more', match: '/more', label: 'tabs.more', icon: 'settings' },
   ];

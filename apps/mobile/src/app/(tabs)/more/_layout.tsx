@@ -14,7 +14,14 @@ export default function MoreStack() {
       <Stack.Screen name="customize" options={{ title: t('customize.title') }} />
       <Stack.Screen name="timesheets" options={{ title: t('timesheet.title') }} />
       <Stack.Screen name="timeoff" options={{ title: t('timeoff.title') }} />
-      <Stack.Screen name="module/[id]" options={{ title: '' }} />
+      <Stack.Screen name="attendance" options={{ title: t('module.attendance') }} />
+      <Stack.Screen name="reports" options={{ title: t('module.reports') }} />
+      <Stack.Screen name="people" options={{ title: t('module.people') }} />
+      <Stack.Screen name="person/[id]" options={{ title: '' }} />
+      <Stack.Screen name="payroll" options={{ title: t('module.payroll') }} />
+      <Stack.Screen name="admin" options={{ title: t('module.admin') }} />
+      <Stack.Screen name="crm" options={{ title: t('module.crm') }} />
+      <Stack.Screen name="notifications" options={{ title: t('notify.title') }} />
     </Stack>
   );
 }

@@ -32,6 +32,7 @@ export const PERMISSIONS = [
   'people.view',
   'people.view.sensitive',
   'people.manage',
+  'people.offboard',
   // Payroll
   'payroll.view',
   'payroll.prepare',
@@ -47,6 +48,8 @@ export const PERMISSIONS = [
   'admin.settings',
   'admin.roles',
   'admin.audit',
+  // Organization-wide management (owner): approve any request at any stage.
+  'org.manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -80,6 +83,7 @@ export const ROLE_TEMPLATES = [
   'payroll',
   'executive',
   'org_admin',
+  'owner',
 ] as const;
 export type RoleTemplate = (typeof ROLE_TEMPLATES)[number];
 
@@ -146,21 +150,40 @@ export const ROLE_GRANTS: Readonly<Record<RoleTemplate, readonly Grant[]>> = {
       'reports.team',
     ),
   ],
+  // Operations / workforce planning: schedules, staffing and coverage.
   operations: [
     ...STAFF,
     ...g('organization', 'schedule.view', 'schedule.manage', 'attendance.view', 'work.view', 'work.assign', 'reports.team'),
   ],
-  // HR sees all time off but does not approve it: approvals follow the
-  // reporting line and are finalized by managers (see approvals/chain.ts).
-  hr: [...STAFF, ...g('organization', 'people.view', 'people.view.sensitive', 'people.manage', 'timeoff.view', 'timesheet.view')],
+  // HR: employee records (incl. confidential fields), hiring/offboarding,
+  // attendance and time-off oversight. Never approves, never sees payroll.
+  hr: [
+    ...STAFF,
+    ...g(
+      'organization',
+      'people.view',
+      'people.view.sensitive',
+      'people.manage',
+      'people.offboard',
+      'timeoff.view',
+      'timesheet.view',
+      'attendance.view',
+      'reports.team',
+    ),
+  ],
+  // Payroll: timesheets, locking, adjustments and exports; reads punches.
+  // Cannot edit employees or see confidential HR fields; never approves.
   payroll: [
     ...STAFF,
-    ...g('organization', 'timesheet.view', 'timesheet.lock', 'timesheet.adjust', 'payroll.view', 'payroll.prepare', 'payroll.export'),
+    ...g('organization', 'attendance.view', 'timesheet.view', 'timesheet.lock', 'timesheet.adjust', 'payroll.view', 'payroll.prepare', 'payroll.export', 'people.view'),
   ],
   // Executives see aggregates and act as final approvers for managers' own
   // requests; person-level attendance detail is not granted by default.
   executive: [...STAFF, ...g('organization', 'reports.team', 'reports.organization', 'crm.view', 'timeoff.approve', 'timesheet.approve')],
-  org_admin: [...STAFF, ...g('organization', 'admin.settings', 'admin.roles', 'admin.audit', 'people.view')],
+  // IT / workspace administration: settings, access and audit. No business data.
+  org_admin: [...STAFF, ...g('organization', 'admin.settings', 'admin.roles', 'admin.audit')],
+  // Organization owner: the superior role. Every permission, organization-wide.
+  owner: PERMISSIONS.map((permission) => ({ permission, scope: 'organization' as const })),
 };
 
 /**

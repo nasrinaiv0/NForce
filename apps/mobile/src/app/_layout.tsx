@@ -77,6 +77,18 @@ function AppShell() {
           }}
         />
         <Stack.Screen
+          name="employee-form"
+          options={{
+            presentation: 'modal',
+            headerShown: true,
+            title: tr('people.form.title.screen'),
+            headerStyle: { backgroundColor: t.colors.background },
+            headerTintColor: t.colors.primary,
+            headerTitleStyle: { color: t.colors.text },
+            contentStyle: { backgroundColor: t.colors.background },
+          }}
+        />
+        <Stack.Screen
           name="request-overtime"
           options={{
             presentation: 'modal',

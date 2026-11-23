@@ -1,4 +1,4 @@
-import { facetCounts, formatDuration, queryList, type SortSpec } from '@nforce/core';
+import { facetCounts, queryList, type SortSpec } from '@nforce/core';
 import { useMemo, useState } from 'react';
 import { AccessibilityInfo, StyleSheet, TextInput, View } from 'react-native';
 
@@ -7,6 +7,7 @@ import { SegmentedControl } from '@/components/Controls';
 import { Avatar, Pill, type Tone } from '@/components/Display';
 import { Icon } from '@/components/Icon';
 import { ListToolbar, type FilterOption, type SortOption } from '@/components/ListToolbar';
+import { describeRequest as describe } from '@/components/requestText';
 import { EmptyState, ErrorState, LoadingBlock, Screen } from '@/components/Screen';
 import { Card } from '@/components/Surface';
 import { Text } from '@/components/Text';
@@ -114,27 +115,6 @@ export default function ApprovalsScreen() {
       )}
     </Screen>
   );
-}
-
-/** Localized headline + detail for each request kind. */
-function describe(item: ApprovalItem, i18n: I18n): { summary: string; detail: string } {
-  const p = item.payload;
-  const range = (a: string, b: string) => (a === b ? i18n.date(a as never) : `${i18n.date(a as never)} – ${i18n.date(b as never)}`);
-  switch (p.kind) {
-    case 'leave':
-      return { summary: i18n.t('approvals.leaveSummary', { type: p.leaveType, days: i18n.plural('timeoff.days', p.days) }), detail: range(p.start, p.end) };
-    case 'day_off':
-      return { summary: i18n.t('approvals.leaveSummary', { type: i18n.t('timeoff.kind.day_off'), days: i18n.plural('timeoff.days', p.days) }), detail: range(p.start, p.end) + (p.note !== undefined ? ` · ${p.note}` : '') };
-    case 'overtime':
-      return { summary: i18n.t('approvals.overtimeSummary', { time: formatDuration(p.minutes) }), detail: `${i18n.date(p.date)} · ${p.reason}` };
-    case 'timesheet':
-      return {
-        summary: i18n.t('approvals.timesheetSummary', { hours: formatDuration(p.minutes) }),
-        detail: `${i18n.t('approvals.weekOf', { date: i18n.date(p.periodStart, { month: 'short', day: 'numeric' }) })} · ${i18n.t('pay.overtime')} ${formatDuration(p.overtimeMinutes)}`,
-      };
-    case 'correction':
-      return { summary: i18n.t('approvals.missedClockOut'), detail: `${i18n.date(p.date)} · ${p.note}` };
-  }
 }
 
 function ChainStepper({ steps, i18n }: { steps: readonly ApprovalStepView[]; i18n: I18n }) {

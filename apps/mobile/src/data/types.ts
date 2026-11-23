@@ -6,8 +6,13 @@ import type {
   AttendanceEventType,
   AttendanceException,
   AttendanceStatus,
+  AttendanceMetrics,
+  ApprovalSla,
   ClassifiedDay,
   DateKey,
+  Deal,
+  DealStage,
+  PayrollRegister,
   HolidayKind,
   HomeWidget,
   ModuleId,
@@ -48,6 +53,24 @@ export interface SessionInfo {
   readonly modules: readonly ModuleId[];
   readonly widgets: readonly HomeWidget[];
   readonly payPolicy: PayPolicy;
+  /** Server-decided report access (the UI never infers it from job titles). */
+  readonly reports: { readonly executive: boolean; readonly organization: boolean };
+  /** Server-decided management capabilities. */
+  readonly capabilities: {
+    readonly managePeople: boolean;
+    readonly offboard: boolean;
+    readonly assignableRoles: readonly RoleTemplate[];
+    readonly approveAnything: boolean;
+  };
+}
+
+export interface EmployeeInput {
+  readonly name: string;
+  readonly title: string;
+  readonly role: RoleTemplate;
+  readonly managerId: UserId;
+  readonly department: string;
+  readonly teamName?: string;
 }
 
 export interface AttendanceSnapshot {
@@ -196,6 +219,99 @@ export interface MyRequest {
   readonly steps: readonly ApprovalStepView[];
 }
 
+export type ReportScope = 'me' | 'team' | 'org';
+
+export interface AttendanceFlag {
+  readonly date: DateKey;
+  readonly kind: 'late' | 'absent' | 'missed_punch';
+  readonly person: Person;
+  readonly minutes?: number;
+}
+
+export interface AttendanceReport {
+  readonly scope: ReportScope;
+  readonly from: DateKey;
+  readonly to: DateKey;
+  /** False when the viewer only gets aggregates (e.g. executives). */
+  readonly personLevel: boolean;
+  readonly metrics: AttendanceMetrics;
+  readonly previous: AttendanceMetrics;
+  readonly trend: readonly { readonly weekStart: DateKey; readonly metrics: AttendanceMetrics }[];
+  readonly daily: readonly { readonly date: DateKey; readonly rate: number; readonly scheduled: number }[];
+  readonly groups: readonly { readonly name: string; readonly metrics: AttendanceMetrics }[];
+  readonly people: readonly { readonly person: Person; readonly teamName?: string; readonly metrics: AttendanceMetrics }[];
+  readonly exceptions: readonly AttendanceFlag[];
+  readonly availableScopes: readonly ReportScope[];
+}
+
+export interface ExecutiveReport {
+  readonly from: DateKey;
+  readonly to: DateKey;
+  readonly scopeLabel: 'organization' | 'department' | 'team';
+  readonly current: AttendanceMetrics;
+  readonly previous: AttendanceMetrics;
+  readonly trend: readonly { readonly weekStart: DateKey; readonly metrics: AttendanceMetrics }[];
+  readonly laborMix: readonly PayLine[];
+  readonly weightedMinutes: number;
+  readonly teams: readonly { readonly name: string; readonly headcount: number; readonly metrics: AttendanceMetrics }[];
+  readonly approvals: ApprovalSla;
+  readonly leave: { readonly entitled: number; readonly available: number; readonly takenDays: number };
+  readonly payroll: { readonly periodStart: DateKey; readonly ready: boolean; readonly blockers: number; readonly unapprovedOvertimeMinutes: number };
+  readonly risks: readonly { readonly key: 'low_attendance' | 'high_overtime' | 'late_trend' | 'approvals_overdue' | 'missed_punches'; readonly subject: string; readonly value: number }[];
+}
+
+export interface DirectoryEntry {
+  readonly person: Person;
+  readonly departmentKey?: string;
+  readonly role: RoleTemplate;
+  readonly teamName?: string;
+  readonly department: string;
+  readonly manager?: Person;
+}
+
+export interface PersonProfile extends DirectoryEntry {
+  readonly chain: readonly Person[];
+  readonly directReports: readonly Person[];
+  readonly location: string;
+  readonly shift: string;
+  readonly restDays: readonly number[];
+  /** Present only for the person themselves or people.view.sensitive holders. */
+  readonly sensitive?: { readonly employeeId: string; readonly hireDate: DateKey; readonly payGrade: string; readonly emergencyContact: string };
+}
+
+export interface PayrollView extends PayrollRegister {
+  readonly periodStart: DateKey;
+  readonly periodEnd: DateKey;
+  readonly locked: boolean;
+  readonly canLock: boolean;
+}
+
+export interface AuditEntry {
+  readonly id: string;
+  readonly at: string;
+  readonly actor: Person;
+  readonly action: string;
+  readonly detail: string;
+}
+
+export interface AdminOverview {
+  readonly members: readonly DirectoryEntry[];
+  readonly audit: readonly AuditEntry[];
+  readonly holidays: readonly { readonly date: DateKey; readonly kind: HolidayKind; readonly name: string }[];
+  readonly payPolicy: PayPolicy;
+}
+
+export type NotificationKind = 'approval_needed' | 'request_decided' | 'timesheet_due' | 'missed_punch' | 'payroll_ready';
+
+export interface NotificationItem {
+  readonly id: string;
+  readonly kind: NotificationKind;
+  readonly at: string;
+  readonly read: boolean;
+  readonly params: Readonly<Record<string, string>>;
+  readonly href?: string;
+}
+
 export interface NForceApi {
   session(): Promise<SessionInfo>;
   attendance(): Promise<AttendanceSnapshot>;
@@ -216,6 +332,20 @@ export interface NForceApi {
   timesheetAction(action: TimesheetAction, periodStart: DateKey, reason?: string): Promise<void>;
   team(): Promise<TeamMember[]>;
   teamPulse(): Promise<TeamPulse>;
+  attendanceReport(params: { scope: ReportScope; weeks?: number }): Promise<AttendanceReport>;
+  executiveReport(params?: { weeks?: number }): Promise<ExecutiveReport>;
+  directory(): Promise<DirectoryEntry[]>;
+  createEmployee(input: EmployeeInput): Promise<DirectoryEntry>;
+  updateEmployee(id: UserId, patch: Partial<Omit<EmployeeInput, 'name'>>): Promise<DirectoryEntry>;
+  offboardEmployee(id: UserId): Promise<void>;
+  profile(userId: UserId): Promise<PersonProfile>;
+  payroll(periodStart?: DateKey): Promise<PayrollView>;
+  lockPayroll(periodStart: DateKey): Promise<void>;
+  admin(): Promise<AdminOverview>;
+  deals(): Promise<Deal[]>;
+  moveDeal(id: string, stage: DealStage, reason?: string): Promise<Deal>;
+  notifications(): Promise<NotificationItem[]>;
+  markNotificationsRead(ids: readonly string[]): Promise<void>;
 }
 
 /** Errors the UI can present. `code` is stable; `message` is user-safe. */

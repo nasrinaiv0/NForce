@@ -96,11 +96,12 @@ end $$;
 reset role;
 
 -- ---------------------------------------------------------------- routing & decisions
+insert into public.leave_types (organization_id, key, name) values ('10000000-0000-0000-0000-0000000000f1', 'vacation', 'Vacation');
 create temp table ids (name text primary key, id uuid);
 grant all on ids to authenticated;
 
 select pg_temp.act_as('00000000-0000-0000-0000-0000000000a4');
-insert into ids select 'leave1', (public.submit_request('10000000-0000-0000-0000-0000000000f1', 'leave', '{"start":"2026-12-01","end":"2026-12-03"}')).id;
+insert into ids select 'leave1', (public.submit_request('10000000-0000-0000-0000-0000000000f1', 'leave', '{"leaveTypeId":"vacation","start":"2026-12-01","end":"2026-12-03","days":3}')).id;
 insert into ids select 'ot1', (public.submit_request('10000000-0000-0000-0000-0000000000f1', 'overtime', '{"date":"2026-11-20","minutes":90}')).id;
 do $$ begin
   perform pg_temp.expect(
@@ -158,7 +159,7 @@ do $$ begin
     perform pg_temp.expect(false, 'decided requests are closed');
   exception when sqlstate 'P0001' then perform pg_temp.expect(sqlerrm like 'closed%', 'decided requests are closed');
   end;
-  insert into ids select 'mgr_leave', (public.submit_request('10000000-0000-0000-0000-0000000000f1', 'day_off', '{}')).id;
+  insert into ids select 'mgr_leave', (public.submit_request('10000000-0000-0000-0000-0000000000f1', 'day_off', '{"start":"2026-12-10","end":"2026-12-10"}')).id;
   perform pg_temp.expect(
     (select array_agg(approver_id) from public.approval_steps where request_id = (select id from ids where name = 'mgr_leave'))
       = array['00000000-0000-0000-0000-0000000000a1']::uuid[], 'manager''s own request goes to the executive');
@@ -166,7 +167,7 @@ end $$;
 reset role;
 
 select pg_temp.act_as('00000000-0000-0000-0000-0000000000a3');
-insert into ids select 'sup_leave', (public.submit_request('10000000-0000-0000-0000-0000000000f1', 'leave', '{}')).id;
+insert into ids select 'sup_leave', (public.submit_request('10000000-0000-0000-0000-0000000000f1', 'leave', '{"leaveTypeId":"vacation","start":"2026-12-14","end":"2026-12-14","days":1}')).id;
 do $$ begin
   perform pg_temp.expect(
     (select array_agg(level::text || ':' || approver_id::text) from public.approval_steps where request_id = (select id from ids where name = 'sup_leave'))

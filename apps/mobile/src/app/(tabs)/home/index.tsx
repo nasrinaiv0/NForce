@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { Checkbox } from '@/components/Controls';
+import { DesktopHome } from '@/components/DesktopHome';
 import { Avatar, Meter, Pill } from '@/components/Display';
 import { HeroCard } from '@/components/Hero';
 import { Icon, type IconName } from '@/components/Icon';
@@ -13,6 +14,7 @@ import { Touchable } from '@/components/Touchable';
 import {
   useApprovals,
   useAttendance,
+  useExecutiveReport,
   useBalances,
   useSession,
   useSetTaskDone,
@@ -30,9 +32,6 @@ import { useI18n } from '@/i18n';
 import { resolveHomeLayout } from '@/state/homeLayout';
 import { usePreference } from '@/state/preferences';
 
-/** Relative heights used to balance the two desktop columns. */
-const WEIGHT: Readonly<Record<HomeWidget, number>> = { clock: 3, my_work: 3, approvals: 2, next_shift: 2, team_pulse: 2, org_metrics: 2, balances: 2 };
-
 export default function HomeScreen() {
   const t = useTheme();
   const session = useSession();
@@ -45,31 +44,21 @@ export default function HomeScreen() {
   const s = session.data;
   const widgets = resolveHomeLayout(s.widgets, order, hidden).filter((w) => w.visible).map((w) => w.widget);
 
-  // Desktop: balance widgets across two columns, preserving the user's order.
-  const columns: HomeWidget[][] = [[], []];
-  const heights = [0, 0];
-  for (const w of widgets) {
-    const col = (heights[0] ?? 0) <= (heights[1] ?? 0) ? 0 : 1;
-    columns[col]?.push(w);
-    heights[col] = (heights[col] ?? 0) + WEIGHT[w];
+  if (isDesktop) {
+    // Desktop: one compact, professional column.
+    return (
+      <Screen onRefresh={() => queryClient.invalidateQueries({ queryKey: keys.all })} maxWidth={980} contentStyle={{ gap: t.space.lg }}>
+        <DesktopHome session={s} widgets={widgets} />
+      </Screen>
+    );
   }
 
   return (
     <Screen onRefresh={() => queryClient.invalidateQueries({ queryKey: keys.all })}>
       <Greeting session={s} />
-      {isDesktop ? (
-        <View style={[styles.columns, { gap: t.space.xxl }]}>
-          {columns.map((col, i) => (
-            <View key={i} style={{ flex: 1, gap: t.space.xxl }}>
-              {col.map((w) => (
-                <Widget key={w} widget={w} session={s} />
-              ))}
-            </View>
-          ))}
-        </View>
-      ) : (
-        widgets.map((w) => <Widget key={w} widget={w} session={s} />)
-      )}
+      {widgets.map((w) => (
+        <Widget key={w} widget={w} session={s} />
+      ))}
       <View style={styles.footer}>
         <Text variant="footnote" color="textTertiary" align="center">
           {s.organization.name} · {tr(`role.${s.role}`)}
@@ -293,26 +282,37 @@ function TeamPulseWidget() {
 function OrgMetricsWidget() {
   const t = useTheme();
   const i18n = useI18n();
-  const metrics = [
-    { label: i18n.t('home.attendanceRate'), value: 0.964, color: t.colors.success },
-    { label: i18n.t('home.coverage'), value: 0.981, color: t.colors.primary },
-    { label: i18n.t('home.overtime'), value: 0.031, color: t.colors.warning },
+  const report = useExecutiveReport(4);
+  const r = report.data;
+  const metrics = r === undefined ? [] : [
+    { label: i18n.t('reports.attendanceRate'), value: r.current.attendanceRate, color: t.colors.success },
+    { label: i18n.t('reports.punctuality'), value: r.current.punctualityRate, color: t.colors.primary },
+    { label: i18n.t('reports.overtimeShare'), value: r.current.overtimeShare, color: t.colors.warning },
   ];
   return (
     <View style={{ gap: t.space.md }}>
-      <SectionHeader title={i18n.t('home.orgMetrics')} />
+      <SectionHeader title={i18n.t('home.orgMetrics')} action={{ label: i18n.t('common.seeAll'), onPress: () => router.navigate('/more/reports') }} />
       <Card style={{ gap: t.space.lg }}>
-        {metrics.map((m) => (
-          <View key={m.label} style={{ gap: t.space.sm }}>
-            <View style={styles.rowBetween}>
-              <Text variant="subhead">{m.label}</Text>
-              <Text variant="headline" tabular>
-                {i18n.number(m.value, { style: 'percent', maximumFractionDigits: 1 })}
-              </Text>
+        {r === undefined ? (
+          <LoadingBlock rows={3} height={20} />
+        ) : (
+          metrics.map((m) => (
+            <View key={m.label} style={{ gap: t.space.sm }}>
+              <View style={styles.rowBetween}>
+                <Text variant="subhead">{m.label}</Text>
+                <Text variant="headline" tabular>
+                  {i18n.number(m.value, { style: 'percent', maximumFractionDigits: 1 })}
+                </Text>
+              </View>
+              <Meter value={m.value} color={m.color} />
             </View>
-            <Meter value={m.value} color={m.color} />
-          </View>
-        ))}
+          ))
+        )}
+        {r !== undefined && (
+          <Text variant="caption" color="textTertiary">
+            {i18n.t('reports.period', { from: i18n.date(r.from, { month: 'short', day: 'numeric' }), to: i18n.date(r.to, { month: 'short', day: 'numeric' }) })}
+          </Text>
+        )}
       </Card>
     </View>
   );
@@ -412,7 +412,6 @@ const styles = StyleSheet.create({
   stacked: { borderWidth: 2, borderRadius: 999 },
   grid: { flexDirection: 'row', flexWrap: 'wrap' },
   gridCell: { flexGrow: 1, flexBasis: '40%', minWidth: 140 },
-  columns: { flexDirection: 'row', alignItems: 'flex-start' },
   footer: { alignItems: 'center', gap: 8 },
   taskRow: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 56, paddingVertical: 6 },
 });

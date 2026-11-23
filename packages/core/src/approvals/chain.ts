@@ -17,6 +17,10 @@ import { err, ok, type DomainError, type Result } from '../result';
  *
  * Nobody can decide their own request. A manager's own request goes to the
  * next manager-tier person above them (e.g. an executive).
+ *
+ * Organization owners (holders of `org.manage`) may decide ANY request at any
+ * stage as an override; the caller must verify that permission and pass
+ * `override: true`. Self-approval remains impossible.
  */
 
 export type ApproverLevel = 'supervisor' | 'manager';
@@ -55,7 +59,7 @@ export type ApprovalErrorCode =
 export type ApprovalError = DomainError<ApprovalErrorCode>;
 
 const SUPERVISOR_TIER: readonly RoleTemplate[] = ['supervisor'];
-const MANAGER_TIER: readonly RoleTemplate[] = ['manager', 'executive'];
+const MANAGER_TIER: readonly RoleTemplate[] = ['manager', 'executive', 'owner'];
 const inTier = (m: OrgMember, tier: readonly RoleTemplate[]) => m.roles.some((r) => tier.includes(r));
 
 /** The requester's managers, nearest first. Fails on unknown people or cycles. */
@@ -118,6 +122,8 @@ export function currentApprovers(state: ApprovalState): UserId[] {
 export interface DecideOptions {
   readonly now?: Date;
   readonly reason?: string;
+  /** Owner override (caller has verified `org.manage`). Decides as final approver. */
+  readonly override?: boolean;
 }
 
 /**
@@ -146,7 +152,7 @@ export function decideApproval(
 
   let actingIndex: number;
   if (current.approverId === actorId) actingIndex = currentIndex;
-  else if (final.approverId === actorId) actingIndex = finalIndex;
+  else if (final.approverId === actorId || options.override === true) actingIndex = finalIndex;
   else return err({ code: 'not_approver', message: 'You are not an approver for this request.' });
 
   const at = (options.now ?? new Date()).toISOString();

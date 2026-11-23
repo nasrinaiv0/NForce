@@ -8,6 +8,7 @@ import { scopeRank, type Permission, type Scope } from '../access/permissions';
  */
 
 export type ModuleId =
+  | 'attendance'
   | 'team'
   | 'timesheets'
   | 'timeoff'
@@ -28,6 +29,7 @@ export interface ModuleDefinition {
 
 export const MODULES: readonly ModuleDefinition[] = [
   { id: 'approvals', anyOf: ['timesheet.approve', 'timeoff.approve', 'attendance.correct'] },
+  { id: 'attendance', anyOf: ['attendance.view', 'reports.personal'] },
   { id: 'team', anyOf: ['attendance.view'], minScope: 'team' },
   { id: 'timesheets', anyOf: ['timesheet.view'] },
   { id: 'timeoff', anyOf: ['timeoff.request', 'timeoff.view'] },

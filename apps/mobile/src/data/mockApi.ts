@@ -5,8 +5,20 @@ import {
   TeamId,
   UserId,
   addDays,
+  approvalSla,
+  assignableRoles,
   authorize,
+  canAssignRole,
+  planOffboarding,
   authorizeOvertime,
+  buildDayRecord,
+  buildPayrollRegister,
+  dailyRates,
+  grantScope,
+  moveDeal as moveDealRule,
+  summarizeAttendance,
+  summarizeBy,
+  weeklyTrend,
   availableTimesheetActions,
   buildApprovalChain,
   classifySessions,
@@ -28,6 +40,8 @@ import {
   weightedMinutes,
   type ApprovalState,
   type AttendanceEvent,
+  type DayRecord,
+  type Deal,
   type AttendanceEventType,
   type DateKey,
   type HolidayKind,
@@ -47,6 +61,16 @@ import {
 
 import {
   ApiError,
+  type AdminOverview,
+  type AttendanceFlag,
+  type AttendanceReport,
+  type AuditEntry,
+  type DirectoryEntry,
+  type ExecutiveReport,
+  type NotificationItem,
+  type PayrollView,
+  type PersonProfile,
+  type ReportScope,
   type ApprovalItem,
   type ApprovalStepView,
   type AttendanceSnapshot,
@@ -89,6 +113,14 @@ const OPS = DepartmentId('dept_ops');
 const PEOPLE_DEPT = DepartmentId('dept_people');
 const FINANCE = DepartmentId('dept_finance');
 const IT = DepartmentId('dept_it');
+const EXEC = DepartmentId('dept_exec');
+const DEPARTMENT_NAMES: Readonly<Record<string, string>> = {
+  dept_ops: 'Operations',
+  dept_people: 'People',
+  dept_finance: 'Finance',
+  dept_it: 'IT',
+  dept_exec: 'Executive Office',
+};
 const CX = TeamId('team_cx');
 const BILLING = TeamId('team_billing');
 
@@ -137,7 +169,8 @@ const cx = { departmentId: OPS, managerId: UserId('u_maya'), teamId: CX, teamNam
 const billing = { departmentId: OPS, managerId: UserId('u_kenji'), teamId: BILLING, teamName: 'Billing', shift: EARLY };
 
 const DIRECTORY: readonly DirectoryPerson[] = [
-  mk('u_rafael', 'Rafael Mendoza', 'VP, Operations', 'executive', 15, { departmentId: OPS }),
+  mk('u_sofia', 'Sofia Reyes', 'CEO · Organization Owner', 'owner', 255, { departmentId: EXEC }),
+  mk('u_rafael', 'Rafael Mendoza', 'VP, Operations', 'executive', 15, { departmentId: OPS, managerId: UserId('u_sofia') }),
   mk('u_elena', 'Elena Cruz', 'Operations Manager', 'manager', 290, { departmentId: OPS, managerId: UserId('u_rafael') }),
   mk('u_maya', 'Maya Santos', 'Team Lead, Customer Success', 'supervisor', 230, { ...cx, managerId: UserId('u_elena') }),
   mk('u_kenji', 'Kenji Watanabe', 'Team Lead, Billing', 'supervisor', 190, { ...billing, managerId: UserId('u_elena') }),
@@ -164,6 +197,7 @@ export const PERSONA_USER: Readonly<Record<RoleTemplate, UserId>> = {
   payroll: UserId('u_paulo'),
   executive: UserId('u_rafael'),
   org_admin: UserId('u_alex'),
+  owner: UserId('u_sofia'),
 };
 
 /** Statutory dates fixed by Philippine law; tenants manage their own calendar. */
@@ -213,10 +247,27 @@ export function createMockApi(options: MockApiOptions): NForceApi {
   let seq = 0;
   const nextId = (prefix: string) => `${prefix}_${(++seq).toString(36)}`;
 
-  const byId = new Map(DIRECTORY.map((p) => [p.id, p]));
-  const orgMembers = new Map<UserId, OrgMember>(
-    DIRECTORY.map((p) => [p.id, { id: p.id, roles: [p.role], ...(p.managerId !== undefined ? { managerId: p.managerId } : {}) }]),
-  );
+  /** Mutable copy: people can be added, edited and offboarded. */
+  const allPeople: DirectoryPerson[] = [...DIRECTORY];
+  const offboarded = new Set<UserId>();
+  const byId = new Map(allPeople.map((p) => [p.id, p]));
+  const orgMembers = new Map<UserId, OrgMember>();
+  const rebuildOrg = () => {
+    orgMembers.clear();
+    for (const p of allPeople) {
+      if (offboarded.has(p.id)) continue;
+      orgMembers.set(p.id, { id: p.id, roles: [p.role], ...(p.managerId !== undefined ? { managerId: p.managerId } : {}) });
+    }
+  };
+  rebuildOrg();
+  const people = (): DirectoryPerson[] => allPeople.filter((p) => !offboarded.has(p.id));
+  const replacePerson = (next: DirectoryPerson) => {
+    const i = allPeople.findIndex((p) => p.id === next.id);
+    if (i >= 0) allPeople[i] = next;
+    else allPeople.push(next);
+    byId.set(next.id, next);
+    rebuildOrg();
+  };
   const person = (id: UserId): DirectoryPerson => {
     const p = byId.get(id);
     if (p === undefined) throw new ApiError('not_found', 'That person is not in this organization.');
@@ -282,13 +333,43 @@ export function createMockApi(options: MockApiOptions): NForceApi {
 
   const seedToday = today();
   const lastWeek = addDays(weekStart(seedToday), -7);
+  /** Nine full weeks of history feed reports and trends. */
+  const HISTORY_WEEKS = 9;
+  const historyStart = addDays(weekStart(seedToday), -7 * HISTORY_WEEKS);
   onLeave.add(`u_nina|${seedToday}`);
+  const historicalOvertime: { p: DirectoryPerson; date: DateKey; minutes: number }[] = [];
 
-  for (const p of DIRECTORY) {
-    for (const d of dateRange(lastWeek, seedToday)) {
+  for (const p of people()) {
+    for (const d of dateRange(historyStart, seedToday)) {
       const key = `${p.id}|${d}`;
       const jitterIn = (Math.abs(hash(`${key}in`)) % 9) - 6; // −6…+2 min
       const jitterOut = Math.abs(hash(`${key}out`)) % 9; // 0…8 min
+      // Older weeks: realistic sick days, no-shows, late arrivals and approved OT,
+      // with punctuality improving over time (a trend worth reporting).
+      if (d < lastWeek && !p.restDays.includes(isoWeekday(d)) && DEMO_HOLIDAYS[d]?.kind !== 'regular') {
+        const h = Math.abs(hash(`${key}hist`));
+        const weeksAgo = Math.floor((Date.parse(lastWeek) - Date.parse(d)) / (7 * 86_400_000));
+        if ((p.role === 'staff' || p.role === 'supervisor') && h % 31 === 0) {
+          onLeave.add(key); // sick leave
+          continue;
+        }
+        if (p.role === 'staff' && h % 53 === 7) continue; // unexcused absence
+        const window = shiftWindow(p, d);
+        const lateEvery = weeksAgo >= 5 ? 9 : weeksAgo >= 3 ? 14 : 23;
+        const clockIn = h % lateEvery === 0 ? plusMinutes(window.start, 8 + (h % 27)) : plusMinutes(window.start, jitterIn);
+        const otMinutes = (p.role === 'staff' || p.role === 'supervisor') && h % 8 === 3 ? 45 + (h % 7) * 15 : 0;
+        push(p, 'clock_in', clockIn);
+        if (p.shift.night === true) {
+          push(p, 'break_start', at(addDays(d, 1), 2, 0));
+          push(p, 'break_end', at(addDays(d, 1), 3, 0));
+        } else {
+          push(p, 'break_start', at(d, 12, 0));
+          push(p, 'break_end', at(d, 13, 0));
+        }
+        push(p, 'clock_out', plusMinutes(window.end, otMinutes > 0 ? otMinutes : jitterOut));
+        if (otMinutes > 0) historicalOvertime.push({ p, date: d, minutes: otMinutes });
+        continue;
+      }
       // Scenario overrides that exercise every pay category.
       const restDayOt = p.id === 'u_jordan' && d === addDays(lastWeek, 5);
       if (!isScheduled(p, d) && !restDayOt) continue;
@@ -370,6 +451,11 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     return list;
   };
 
+  // ------------------------------------------------------------ audit
+  const auditLog: { id: string; at: string; actorId: UserId; action: string; detail: string }[] = [];
+  const audit = (actorId: UserId, action: string, detail: string, at = now().toISOString()) =>
+    auditLog.push({ id: nextId('aud'), at, actorId, action, detail });
+
   // ------------------------------------------------------------ requests
   const requests: RequestRecord[] = [];
   const submit = (requester: DirectoryPerson, payload: RequestPayload, submittedAt: string): RequestRecord => {
@@ -377,12 +463,26 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     if (!chain.ok) throw new ApiError(chain.error.code, chain.error.message);
     const record: RequestRecord = { id: nextId('req'), kind: payload.kind, payload, submittedAt, state: chain.value };
     requests.push(record);
+    audit(requester.id, 'request.submitted', payload.kind, submittedAt);
     return record;
   };
-  const seedDecide = (r: RequestRecord, by: string, decision: 'approve' | 'return', reason?: string) => {
-    const result = decideApproval(r.state, UserId(by), decision, { now: now(), ...(reason !== undefined ? { reason } : {}) });
-    if (result.ok) r.state = result.value;
+  const seedDecide = (r: RequestRecord, by: string, decision: 'approve' | 'return', reason?: string, when: Date = now()) => {
+    const result = decideApproval(r.state, UserId(by), decision, { now: when, ...(reason !== undefined ? { reason } : {}) });
+    if (result.ok) {
+      r.state = result.value;
+      audit(UserId(by), `request.${decision}`, r.kind, when.toISOString());
+    }
   };
+  // Historical overtime: filed the next morning, decided along the chain within hours.
+  for (const ot of historicalOvertime) {
+    const filed = new Date(Date.parse(at(addDays(ot.date, 1), 9, 30)));
+    const r = submit(ot.p, { kind: 'overtime', date: ot.date, minutes: ot.minutes, reason: 'Queue coverage' }, filed.toISOString());
+    let t = filed.getTime();
+    for (const step of r.state.steps) {
+      t += (2 + (Math.abs(hash(r.id)) % 20)) * 3_600_000;
+      seedDecide(r, step.approverId, 'approve', undefined, new Date(t));
+    }
+  }
 
   const P = (id: string) => person(UserId(id));
   const leave = (start: number, end: number, type = 'vacation'): RequestPayload => ({
@@ -477,8 +577,18 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       version: 2,
       history: [{ action: to === 'approved' ? 'approve' : 'submit', from: 'draft', to, by: UserId(by), at: ago(2000) }],
     });
-  seedSheet('u_jordan', 'approved', 'u_elena');
+  for (const p of people()) {
+    if (!['u_sam', 'u_priya', 'u_diego'].includes(p.id)) seedSheet(p.id, 'approved', p.managerId ?? p.id);
+    for (let w = 2; w <= HISTORY_WEEKS; w++) {
+      sheetState.set(sheetKey(p.id, addDays(lastWeek, -7 * (w - 1))), {
+        status: 'locked',
+        version: 4,
+        history: [{ action: 'lock', from: 'approved', to: 'locked', by: UserId('u_paulo'), at: ago(2000 + w * 10_080) }],
+      });
+    }
+  }
   seedSheet('u_sam', 'submitted', 'u_sam');
+  const lockedPeriods = new Set<DateKey>(Array.from({ length: HISTORY_WEEKS - 1 }, (_, i) => addDays(lastWeek, -7 * (i + 1))));
   submit(P('u_sam'), { kind: 'timesheet', periodStart: lastWeek, minutes: 40 * 60 + 35, overtimeMinutes: 35 }, ago(1440));
 
   // ------------------------------------------------------------ views
@@ -491,8 +601,13 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       ...(st.reason !== undefined ? { reason: st.reason } : {}),
     }));
 
+  /** Organization owners (org.manage) may decide any request at any stage. */
+  const isOwner = (me: DirectoryPerson) => authorize(subjectOf(me), 'org.manage', { organizationId: ORG }, now()).allowed;
   const canDecideRecord = (r: RequestRecord, me: DirectoryPerson) =>
-    currentApprovers(r.state).includes(me.id) && can(DECIDE_PERMISSION[r.kind], person(r.state.requesterId));
+    r.state.status === 'pending' &&
+    r.state.requesterId !== me.id &&
+    (currentApprovers(r.state).includes(me.id) || isOwner(me)) &&
+    can(DECIDE_PERMISSION[r.kind], person(r.state.requesterId));
 
   const toItem = (r: RequestRecord, me: DirectoryPerson): ApprovalItem => {
     const requester = person(r.state.requesterId);
@@ -551,7 +666,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
 
   const teamOf = (me: DirectoryPerson): TeamMember[] => {
     const ws = weekStart(today());
-    return DIRECTORY.filter((p) => p.id !== me.id && can('attendance.view', p)).map((p) => {
+    return people().filter((p) => p.id !== me.id && can('attendance.view', p)).map((p) => {
       const days = classifySessions(sessionsIn(p, ws, addDays(ws, 6)), payCtx(p));
       const open = replayOf(p.id).sessions.find((s) => s.clockOut === undefined && s.workDate >= ws);
       const openMinutes = open !== undefined ? Math.floor(sessionTotals(open, now()).workedMs / 60_000) : 0;
@@ -613,6 +728,112 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     return result.value;
   };
 
+
+  // ------------------------------------------------------------ reporting
+  const isWorkday = (p: DirectoryPerson, d: DateKey) => !p.restDays.includes(isoWeekday(d)) && DEMO_HOLIDAYS[d]?.kind !== 'regular';
+  const groupName = (p: DirectoryPerson) => p.teamName ?? DEPARTMENT_NAMES[p.departmentId] ?? p.departmentId;
+
+  /** One record per person per day: the single source for every attendance report. */
+  const recordsFor = (p: DirectoryPerson, from: DateKey, to: DateKey): DayRecord[] => {
+    const replay = replayOf(p.id);
+    const sessions = replay.sessions.filter((x) => x.workDate >= from && x.workDate <= to);
+    const classified = new Map(classifySessions(sessions, payCtx(p)).map((d) => [d.date, d]));
+    return dateRange(from, to).map((d) => {
+      const session = sessions.find((x) => x.workDate === d);
+      const missed =
+        session !== undefined && session.clockOut === undefined && replay.exceptions.some((x) => x.kind === 'missed_clock_out' && x.at === session.clockIn);
+      const holiday = DEMO_HOLIDAYS[d]?.kind;
+      const c = classified.get(d);
+      return buildDayRecord({
+        userId: p.id,
+        date: d,
+        ...(isWorkday(p, d) ? { scheduledStart: shiftWindow(p, d).start } : {}),
+        onLeave: onLeave.has(`${p.id}|${d}`),
+        ...(holiday !== undefined ? { holiday } : {}),
+        ...(session !== undefined ? { clockIn: session.clockIn } : {}),
+        ...(c !== undefined ? { classified: c } : {}),
+        missedPunch: missed,
+      });
+    });
+  };
+
+  /** Completed days only: reports end yesterday; today is live in the Team view. */
+  const periodFor = (weeks: number) => {
+    const to = addDays(today(), -1);
+    const from = addDays(to, -7 * weeks + 1);
+    return { from, to, prevFrom: addDays(from, -7 * weeks), prevTo: addDays(from, -1) };
+  };
+  const trendStarts = (n = 8) => {
+    const lastComplete = addDays(weekStart(today()), -7);
+    return Array.from({ length: n }, (_, i) => addDays(lastComplete, -7 * (n - 1 - i)));
+  };
+  const scopedPeople = (me: DirectoryPerson) => people().filter((p) => p.id !== me.id && can('attendance.view', p));
+  const hasOrgReports = (me: DirectoryPerson) => authorize(subjectOf(me), 'reports.organization', { organizationId: ORG }, now()).allowed;
+
+  const approvalRecords = (people: readonly DirectoryPerson[]) => {
+    const ids = new Set(people.map((p) => p.id));
+    return requests
+      .filter((r) => ids.has(r.state.requesterId))
+      .map((r) => {
+        const decided = r.state.status === 'pending' ? undefined : [...r.state.steps].reverse().find((x) => x.decidedAt !== undefined)?.decidedAt;
+        return { kind: r.kind, submittedAt: r.submittedAt, status: r.state.status, ...(decided !== undefined ? { decidedAt: decided } : {}) };
+      });
+  };
+
+  const payrollFor = (people: readonly DirectoryPerson[], start: DateKey) =>
+    buildPayrollRegister(
+      people.map((p) => {
+        const approved = new Map<DateKey, number>();
+        for (const r of requests) {
+          if (r.state.requesterId === p.id && r.state.status === 'approved' && r.payload.kind === 'overtime') {
+            approved.set(r.payload.date, (approved.get(r.payload.date) ?? 0) + r.payload.minutes);
+          }
+        }
+        return {
+          userId: p.id,
+          name: p.name,
+          days: classify(p, start),
+          approvedOvertime: approved,
+          timesheetStatus: stateOf(p.id, start).status,
+          missedPunches: recordsFor(p, start, addDays(start, 6)).filter((x) => x.missedPunch).length,
+        };
+      }),
+      PH_DEFAULT_PAY_POLICY,
+    );
+
+  const directoryEntry = (p: DirectoryPerson): DirectoryEntry => {
+    const manager = p.managerId !== undefined ? byId.get(p.managerId) : undefined;
+    return {
+      person: view(p),
+      role: p.role,
+      ...(p.teamName !== undefined ? { teamName: p.teamName } : {}),
+      department: DEPARTMENT_NAMES[p.departmentId] ?? p.departmentId,
+      departmentKey: p.departmentId,
+      ...(manager !== undefined ? { manager: view(manager) } : {}),
+    };
+  };
+
+  const deals: Deal[] = [
+    ['Contact-center renewal', 'Meridian Telecom', 'proposal', 4_800_000_00, 12],
+    ['Billing BPO expansion', 'Harbor Freight PH', 'negotiation', 2_350_000_00, 20],
+    ['Night support pilot', 'Luzon Health', 'qualified', 950_000_00, 35],
+    ['Collections program', 'Visayas Bank', 'lead', 1_600_000_00, 60],
+    ['QA outsourcing', 'Archipelago Air', 'won', 1_200_000_00, -10],
+    ['Chat support add-on', 'Meridian Telecom', 'won', 640_000_00, -25],
+    ['Multilingual desk', 'Pacific Retail', 'lost', 780_000_00, -18],
+    ['Workforce analytics', 'Northstar Logistics', 'proposal', 1_150_000_00, 28],
+  ].map(([name, account, stage, amount, days], i) => ({
+    id: `deal_${i + 1}`,
+    name: String(name),
+    account: String(account),
+    ownerName: i % 2 === 0 ? 'Rafael Mendoza' : 'Elena Cruz',
+    stage: stage as Deal['stage'],
+    amountMinor: Number(amount),
+    currency: 'PHP',
+    closeDate: addDays(seedToday, Number(days)),
+  }));
+  const readNotifications = new Set<string>();
+
   const respond = async <T>(fn: () => T): Promise<T> => {
     await delay(latency);
     return fn();
@@ -634,6 +855,16 @@ export function createMockApi(options: MockApiOptions): NForceApi {
           modules: visibleModules(s, now()),
           widgets: homeWidgets(s, now()),
           payPolicy: PH_DEFAULT_PAY_POLICY,
+          reports: {
+            executive: authorize(s, 'reports.team', { organizationId: ORG, departmentId: me.departmentId }, now()).allowed,
+            organization: hasOrgReports(me),
+          },
+          capabilities: {
+            managePeople: authorize(s, 'people.manage', { organizationId: ORG }, now()).allowed,
+            offboard: authorize(s, 'people.offboard', { organizationId: ORG }, now()).allowed,
+            assignableRoles: assignableRoles(s, now()),
+            approveAnything: isOwner(me),
+          },
         };
       }),
 
@@ -651,7 +882,10 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         const candidate: AttendanceEvent = { id: nextId('evt'), idempotencyKey, organizationId: ORG, userId: me.id, type, occurredAt: now().toISOString(), source: 'mobile' };
         const result = recordEvent(eventsOf(me.id), candidate, { timeZone: TZ, now: now() });
         if (!result.ok) throw new ApiError(result.error.code, result.error.message);
-        if (!result.value.duplicate) events.set(me.id, [...eventsOf(me.id), result.value.event]);
+        if (!result.value.duplicate) {
+          events.set(me.id, [...eventsOf(me.id), result.value.event]);
+          audit(me.id, `attendance.${type}`, 'mobile');
+        }
         return snapshot(me);
       }),
 
@@ -663,7 +897,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
           if (!isScheduled(me, d)) return [];
           const w = shiftWindow(me, d);
           const holiday = DEMO_HOLIDAYS[d];
-          const crew = DIRECTORY.filter((p) => p.id !== me.id && p.teamId !== undefined && p.teamId === me.teamId && isScheduled(p, d)).slice(0, 4);
+          const crew = people().filter((p) => p.id !== me.id && p.teamId !== undefined && p.teamId === me.teamId && isScheduled(p, d)).slice(0, 4);
           return [
             {
               id: `shift_${me.id}_${d}`,
@@ -788,8 +1022,10 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         const r = requests.find((x) => x.id === id);
         if (r === undefined) throw new ApiError('not_found', 'This request no longer exists.');
         const requester = person(r.state.requesterId);
-        if (r.state.status === 'pending' && currentApprovers(r.state).includes(me.id)) ensure(DECIDE_PERMISSION[r.kind], requester);
-        const result = decideApproval(r.state, me.id, decision, { now: now(), ...(reason !== undefined ? { reason } : {}) });
+        const inChain = currentApprovers(r.state).includes(me.id);
+        if (r.state.status === 'pending' && (inChain || isOwner(me))) ensure(DECIDE_PERMISSION[r.kind], requester);
+        const override = !inChain && isOwner(me);
+        const result = decideApproval(r.state, me.id, decision, { now: now(), override, ...(reason !== undefined ? { reason } : {}) });
         if (!result.ok) throw new ApiError(result.error.code, result.error.message);
 
         // Validate dependent records BEFORE committing, so a decision is never half-applied.
@@ -804,6 +1040,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
           sheetUpdate = { status: t.value.status, history: [...t.value.history], version: t.value.version };
         }
         r.state = result.value;
+        audit(me.id, `request.${decision}`, `${r.kind} · ${requester.name}`);
         if (sheetUpdate !== undefined && p0.kind === 'timesheet') sheetState.set(sheetKey(requester.id, p0.periodStart), sheetUpdate);
 
         // Effects of a FINAL decision on the authoritative records.
@@ -879,6 +1116,335 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         sheetState.set(sheetKey(me.id, periodStart), { status: result.value.status, history: [...result.value.history], version: result.value.version });
       }),
 
+
+    attendanceReport: ({ scope, weeks = 4 }) =>
+      respond((): AttendanceReport => {
+        const me = actor();
+        ensure('attendance.view', me);
+        const scoped = scopedPeople(me);
+        const orgAllowed = hasOrgReports(me) || grantScope(subjectOf(me), 'attendance.view', now()) === 'organization';
+        const availableScopes: ReportScope[] = ['me', ...(scoped.length > 0 ? (['team'] as const) : []), ...(orgAllowed ? (['org'] as const) : [])];
+        if (!availableScopes.includes(scope)) throw new ApiError('forbidden', "You don't have access to that report scope.");
+        const subjects = scope === 'me' ? [me] : scope === 'team' ? scoped : people();
+        const personLevel = subjects.every((p) => p.id === me.id || can('attendance.view', p));
+
+        const { from, to, prevFrom, prevTo } = periodFor(weeks);
+        const starts = trendStarts();
+        const rangeFrom = [prevFrom, starts[0] ?? prevFrom].sort()[0] ?? prevFrom;
+        const all = subjects.flatMap((p) => recordsFor(p, rangeFrom, to));
+        const inRange = (a: DateKey, b: DateKey) => all.filter((r) => r.date >= a && r.date <= b);
+        const current = inRange(from, to);
+        const personById = new Map(subjects.map((p) => [p.id as string, p]));
+
+        const exceptions: AttendanceFlag[] = personLevel
+          ? current
+              .flatMap((r): AttendanceFlag[] => {
+                const who = personById.get(r.userId);
+                if (who === undefined) return [];
+                const base = { date: r.date, person: view(who) };
+                if (r.missedPunch) return [{ ...base, kind: 'missed_punch' }];
+                if (r.scheduled && !r.present) return [{ ...base, kind: 'absent' }];
+                if (r.lateMinutes > 0) return [{ ...base, kind: 'late', minutes: r.lateMinutes }];
+                return [];
+              })
+              .sort((a, b) => b.date.localeCompare(a.date))
+              .slice(0, 40)
+          : [];
+
+        return {
+          scope,
+          from,
+          to,
+          personLevel,
+          metrics: summarizeAttendance(current),
+          previous: summarizeAttendance(inRange(prevFrom, prevTo)),
+          trend: weeklyTrend(inRange(starts[0] ?? from, to), starts),
+          daily: dailyRates(current),
+          groups: scope === 'me' ? [] : summarizeBy(current, (r) => groupName(personById.get(r.userId) ?? me)).map((g) => ({ name: g.key, metrics: g.metrics })),
+          people:
+            personLevel && scope !== 'me'
+              ? summarizeBy(current, (r) => r.userId).flatMap((g) => {
+                  const who = personById.get(g.key);
+                  return who === undefined ? [] : [{ person: view(who), ...(who.teamName !== undefined ? { teamName: who.teamName } : {}), metrics: g.metrics }];
+                })
+              : [],
+          exceptions,
+          availableScopes,
+        };
+      }),
+
+    executiveReport: ({ weeks = 4 } = {}) =>
+      respond((): ExecutiveReport => {
+        const me = actor();
+        if (!authorize(subjectOf(me), 'reports.team', { organizationId: ORG, departmentId: me.departmentId }, now()).allowed) {
+          throw new ApiError('forbidden', "You don't have access to executive reports.");
+        }
+        const org = hasOrgReports(me);
+        const subjects = org ? people() : [me, ...scopedPeople(me)];
+        const { from, to, prevFrom, prevTo } = periodFor(weeks);
+        const starts = trendStarts();
+        const rangeFrom = [prevFrom, starts[0] ?? prevFrom].sort()[0] ?? prevFrom;
+        const all = subjects.flatMap((p) => recordsFor(p, rangeFrom, to));
+        const inRange = (a: DateKey, b: DateKey) => all.filter((r) => r.date >= a && r.date <= b);
+        const current = inRange(from, to);
+        const previous = inRange(prevFrom, prevTo);
+        const byUser = new Map(subjects.map((p) => [p.id as string, p]));
+        const groupOf = (r: DayRecord) => groupName(byUser.get(r.userId) ?? me);
+
+        const laborMix = summarizePayLines(subjects.flatMap((p) => classifySessions(sessionsIn(p, from, to), payCtx(p))));
+        const teams = summarizeBy(current, groupOf).map((g) => ({
+          name: g.key,
+          headcount: subjects.filter((p) => groupName(p) === g.key).length,
+          metrics: g.metrics,
+        }));
+        const sla = approvalSla(approvalRecords(subjects), now());
+        const balances = subjects.flatMap((p) => balancesOf(p));
+        const register = payrollFor(subjects, lastWeek);
+        const cur = summarizeAttendance(current);
+        const prev = summarizeAttendance(previous);
+
+        const risks: ExecutiveReport['risks'][number][] = [
+          ...teams.filter((t) => t.metrics.attendanceRate < 0.95).map((t) => ({ key: 'low_attendance' as const, subject: t.name, value: t.metrics.attendanceRate })),
+          ...teams.filter((t) => t.metrics.overtimeShare > 0.06).map((t) => ({ key: 'high_overtime' as const, subject: t.name, value: t.metrics.overtimeShare })),
+          ...(cur.punctualityRate < prev.punctualityRate - 0.02 ? [{ key: 'late_trend' as const, subject: '', value: cur.punctualityRate - prev.punctualityRate }] : []),
+          ...(sla.overdue > 0 ? [{ key: 'approvals_overdue' as const, subject: '', value: sla.overdue }] : []),
+          ...(cur.missedPunches > 0 ? [{ key: 'missed_punches' as const, subject: '', value: cur.missedPunches }] : []),
+        ];
+
+        return {
+          from,
+          to,
+          scopeLabel: org ? 'organization' : me.role === 'supervisor' ? 'team' : 'department',
+          current: cur,
+          previous: prev,
+          trend: weeklyTrend(inRange(starts[0] ?? from, to), starts),
+          laborMix,
+          weightedMinutes: weightedMinutes(laborMix),
+          teams,
+          approvals: sla,
+          leave: {
+            entitled: balances.reduce((n, b) => n + b.entitled, 0),
+            available: balances.reduce((n, b) => n + b.available, 0),
+            takenDays: current.filter((r) => r.onLeave).length,
+          },
+          payroll: { periodStart: lastWeek, ready: register.ready, blockers: register.blockers, unapprovedOvertimeMinutes: register.totals.unapprovedOvertimeMinutes },
+          risks,
+        };
+      }),
+
+    directory: () =>
+      respond(() => {
+        const me = actor();
+        if (!authorize(subjectOf(me), 'people.directory', { organizationId: ORG }, now()).allowed) throw new ApiError('forbidden', "You don't have access to the directory.");
+        return people().map(directoryEntry);
+      }),
+
+
+    createEmployee: (input) =>
+      respond(() => {
+        const me = actor();
+        const s = subjectOf(me);
+        if (!authorize(s, 'people.manage', { organizationId: ORG }, now()).allowed) throw new ApiError('forbidden', "You can't add employees.");
+        const assign = canAssignRole(s, input.role, { now: now() });
+        if (!assign.allowed) throw new ApiError(assign.reason, 'You can only assign roles whose permissions you hold.');
+        const name = input.name.trim();
+        const title = input.title.trim();
+        if (name.length < 2 || title.length < 2) throw new ApiError('invalid', 'Name and title are required.');
+        const manager = person(input.managerId);
+        if (offboarded.has(manager.id)) throw new ApiError('invalid', 'Choose an active manager.');
+        const departmentId = (Object.keys(DEPARTMENT_NAMES).find((k) => DEPARTMENT_NAMES[k] === input.department || k === input.department) ?? manager.departmentId) as DirectoryPerson['departmentId'];
+        const team = input.teamName !== undefined ? people().find((p) => p.teamName === input.teamName) : undefined;
+        const p = mk(`u_${nextId('emp')}`, name, title, input.role, Math.abs(hash(name)) % 360, {
+          departmentId,
+          managerId: manager.id,
+          ...(team?.teamId !== undefined ? { teamId: team.teamId, teamName: team.teamName ?? '' } : {}),
+        });
+        replacePerson(p);
+        audit(me.id, 'member.added', `${name} · ${input.role}`);
+        return directoryEntry(p);
+      }),
+
+    updateEmployee: (id, patch) =>
+      respond(() => {
+        const me = actor();
+        const s = subjectOf(me);
+        const target = person(id);
+        if (offboarded.has(id)) throw new ApiError('already_inactive', 'This person has been offboarded.');
+        if (!authorize(s, 'people.manage', resourceOf(target), now()).allowed) throw new ApiError('forbidden', "You can't edit this employee.");
+        if (patch.role !== undefined && patch.role !== target.role) {
+          const assign = canAssignRole(s, patch.role, { targetUserId: id, now: now() });
+          if (!assign.allowed) throw new ApiError(assign.reason, 'You can only assign roles whose permissions you hold.');
+          if (target.role === 'owner' && people().filter((p) => p.role === 'owner').length <= 1) throw new ApiError('last_owner', 'An organization must keep at least one owner.');
+        }
+        let next: DirectoryPerson = { ...target, ...(patch.title !== undefined && patch.title.trim().length > 1 ? { title: patch.title.trim() } : {}), ...(patch.role !== undefined ? { role: patch.role } : {}) };
+        if (patch.managerId !== undefined && patch.managerId !== target.managerId) {
+          if (patch.managerId === id) throw new ApiError('invalid', 'Someone cannot report to themselves.');
+          next = { ...next, managerId: patch.managerId };
+          const previous = target;
+          replacePerson(next);
+          const chain = managerChain(id, orgMembers);
+          if (!chain.ok) {
+            replacePerson(previous);
+            throw new ApiError(chain.error.code, 'That change would create a reporting loop.');
+          }
+        }
+        replacePerson(next);
+        audit(me.id, 'member.updated', `${target.name}${patch.role !== undefined ? ` · ${patch.role}` : ''}`);
+        return directoryEntry(next);
+      }),
+
+    offboardEmployee: (id) =>
+      respond(() => {
+        const me = actor();
+        const target = person(id);
+        if (!authorize(subjectOf(me), 'people.offboard', resourceOf(target), now()).allowed) throw new ApiError('forbidden', "You can't offboard this employee.");
+        const plan = planOffboarding(
+          me.id,
+          id,
+          allPeople.map((p) => ({ id: p.id, roles: [p.role], active: !offboarded.has(p.id), ...(p.managerId !== undefined ? { managerId: p.managerId } : {}) })),
+        );
+        if (!plan.ok) throw new ApiError(plan.error.code, plan.error.message);
+        for (const r of plan.value.reassignments) {
+          const report = person(r.userId);
+          const { managerId: _old, ...rest } = report;
+          replacePerson(r.newManagerId !== undefined ? { ...rest, managerId: r.newManagerId } : rest);
+        }
+        offboarded.add(id);
+        rebuildOrg();
+        audit(me.id, 'member.offboarded', target.name);
+      }),
+
+    profile: (userId) =>
+      respond((): PersonProfile => {
+        const me = actor();
+        if (!authorize(subjectOf(me), 'people.directory', { organizationId: ORG }, now()).allowed) throw new ApiError('forbidden', "You don't have access to the directory.");
+        const p = person(userId);
+        const sensitive = p.id === me.id || authorize(subjectOf(me), 'people.view', { ...resourceOf(p), sensitive: true }, now()).allowed;
+        const h = Math.abs(hash(p.id));
+        const fmt = (hm: readonly [number, number]) => `${String(hm[0]).padStart(2, '0')}:${String(hm[1]).padStart(2, '0')}`;
+        return {
+          ...directoryEntry(p),
+          chain: chainOf(p).map((id) => view(person(id))),
+          directReports: people().filter((x) => x.managerId === p.id).map(view),
+          location: p.location,
+          shift: `${fmt(p.shift.start)}–${fmt(p.shift.end)}`,
+          restDays: p.restDays,
+          ...(sensitive
+            ? {
+                sensitive: {
+                  employeeId: `NF-${String(1000 + (h % 9000))}`,
+                  hireDate: addDays('2021-01-04', h % 1500),
+                  payGrade: p.role === 'staff' ? 'P2' : p.role === 'supervisor' ? 'M1' : p.role === 'manager' ? 'M2' : 'E1',
+                  emergencyContact: 'On file',
+                },
+              }
+            : {}),
+        };
+      }),
+
+    payroll: (periodStart) =>
+      respond((): PayrollView => {
+        const me = actor();
+        if (!authorize(subjectOf(me), 'payroll.view', { organizationId: ORG }, now()).allowed) throw new ApiError('forbidden', "You don't have access to payroll.");
+        const start = periodStart ?? lastWeek;
+        const register = payrollFor(people(), start);
+        const locked = lockedPeriods.has(start);
+        const canPrepare = authorize(subjectOf(me), 'payroll.prepare', { organizationId: ORG }, now()).allowed;
+        return { ...register, periodStart: start, periodEnd: addDays(start, 6), locked, canLock: canPrepare && register.ready && !locked };
+      }),
+
+    lockPayroll: (periodStart) =>
+      respond(() => {
+        const me = actor();
+        if (!authorize(subjectOf(me), 'payroll.prepare', { organizationId: ORG }, now()).allowed) throw new ApiError('forbidden', "You can't lock payroll periods.");
+        if (lockedPeriods.has(periodStart)) throw new ApiError('closed', 'This period is already locked.');
+        const register = payrollFor(people(), periodStart);
+        if (!register.ready) throw new ApiError('not_ready', `${register.blockers} employee(s) still block this period.`);
+        const updates: [UserId, SheetState][] = [];
+        for (const p of people()) {
+          if (stateOf(p.id, periodStart).status !== 'approved') continue;
+          const t = transitionTimesheet(sheetFor(p, periodStart), 'lock', subjectOf(me), { now: now() });
+          if (!t.ok) throw new ApiError(t.error.code, t.error.message);
+          updates.push([p.id, { status: t.value.status, history: [...t.value.history], version: t.value.version }]);
+        }
+        for (const [id, st] of updates) sheetState.set(sheetKey(id, periodStart), st);
+        lockedPeriods.add(periodStart);
+        audit(me.id, 'payroll.locked', periodStart);
+      }),
+
+    admin: () =>
+      respond((): AdminOverview => {
+        const me = actor();
+        const s = subjectOf(me);
+        if (!authorize(s, 'admin.roles', { organizationId: ORG }, now()).allowed && !authorize(s, 'admin.audit', { organizationId: ORG }, now()).allowed) {
+          throw new ApiError('forbidden', "You don't have access to administration.");
+        }
+        return {
+          members: people().map(directoryEntry),
+          audit: [...auditLog]
+            .sort((a, b) => b.at.localeCompare(a.at))
+            .slice(0, 150)
+            .map((e): AuditEntry => ({ id: e.id, at: e.at, actor: view(person(e.actorId)), action: e.action, detail: e.detail })),
+          holidays: Object.entries(DEMO_HOLIDAYS).map(([date, h]) => ({ date: date as DateKey, kind: h.kind, name: h.name })),
+          payPolicy: PH_DEFAULT_PAY_POLICY,
+        };
+      }),
+
+    deals: () =>
+      respond(() => {
+        const me = actor();
+        if (!authorize(subjectOf(me), 'crm.view', { organizationId: ORG }, now()).allowed) throw new ApiError('forbidden', "You don't have access to CRM.");
+        return deals;
+      }),
+
+    moveDeal: (id, stage, reason) =>
+      respond(() => {
+        const me = actor();
+        if (!authorize(subjectOf(me), 'crm.manage', { organizationId: ORG }, now()).allowed) throw new ApiError('forbidden', 'You can view the pipeline but not change it.');
+        const i = deals.findIndex((d) => d.id === id);
+        const deal = deals[i];
+        if (deal === undefined) throw new ApiError('not_found', 'That deal no longer exists.');
+        const r = moveDealRule(deal, stage, reason);
+        if (!r.ok) throw new ApiError(r.error.code, r.error.message);
+        deals[i] = r.value;
+        audit(me.id, 'crm.deal_moved', `${deal.name} → ${stage}`);
+        return r.value;
+      }),
+
+    notifications: () =>
+      respond(() => {
+        const me = actor();
+        const out: NotificationItem[] = [];
+        const mine = requests.filter((r) => currentApprovers(r.state).includes(me.id) && can(DECIDE_PERMISSION[r.kind], person(r.state.requesterId)));
+        if (mine.length > 0) {
+          const newest = mine.map((r) => r.submittedAt).sort().at(-1) ?? now().toISOString();
+          out.push({ id: `appr_${mine.length}`, kind: 'approval_needed', at: newest, read: false, params: { count: String(mine.length) }, href: '/more/approvals' });
+        }
+        const cutoff = now().getTime() - 14 * 86_400_000;
+        for (const r of requests) {
+          if (r.state.requesterId !== me.id || r.state.status === 'pending') continue;
+          const decided = [...r.state.steps].reverse().find((x) => x.decidedAt !== undefined);
+          if (decided?.decidedAt === undefined || Date.parse(decided.decidedAt) < cutoff) continue;
+          out.push({ id: `dec_${r.id}`, kind: 'request_decided', at: decided.decidedAt, read: false, params: { kind: r.kind, status: r.state.status, by: person(decided.approverId).name }, href: '/more/timeoff' });
+        }
+        const sheet = stateOf(me.id, lastWeek);
+        if ((sheet.status === 'draft' || sheet.status === 'returned') && classify(me, lastWeek).length > 0) {
+          out.push({ id: `ts_${lastWeek}`, kind: 'timesheet_due', at: at(weekStart(today()), 8, 0), read: false, params: { period: lastWeek }, href: '/more/timesheets' });
+        }
+        const missed = replayOf(me.id).exceptions.filter((x) => x.kind === 'missed_clock_out');
+        for (const x of missed) out.push({ id: `miss_${x.at}`, kind: 'missed_punch', at: x.at, read: false, params: { at: x.at }, href: '/clock' });
+        if (authorize(subjectOf(me), 'payroll.prepare', { organizationId: ORG }, now()).allowed) {
+          const reg = payrollFor(people(), lastWeek);
+          if (!lockedPeriods.has(lastWeek)) out.push({ id: `pay_${lastWeek}_${reg.blockers}`, kind: 'payroll_ready', at: at(weekStart(today()), 7, 0), read: false, params: { blockers: String(reg.blockers), period: lastWeek }, href: '/more/payroll' });
+        }
+        return out.map((n) => ({ ...n, read: readNotifications.has(n.id) })).sort((a, b) => b.at.localeCompare(a.at));
+      }),
+
+    markNotificationsRead: (ids) =>
+      respond(() => {
+        for (const id of ids) readNotifications.add(id);
+      }),
+
     team: () => respond(() => teamOf(actor())),
 
     teamPulse: () =>
@@ -889,7 +1455,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         }
         // Person-level scope when granted; otherwise an org-wide aggregate (counts only).
         const scoped = teamOf(me);
-        const statuses = scoped.length > 0 ? scoped.map((m) => m.status) : DIRECTORY.filter((p) => p.id !== me.id).map((p) => memberStatus(p).status);
+        const statuses = scoped.length > 0 ? scoped.map((m) => m.status) : people().filter((p) => p.id !== me.id).map((p) => memberStatus(p).status);
         const count = (...xs: MemberStatus[]) => statuses.filter((x) => xs.includes(x)).length;
         return {
           onShift: count('working'),

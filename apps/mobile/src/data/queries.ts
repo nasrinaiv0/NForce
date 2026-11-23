@@ -4,7 +4,7 @@ import { randomUUID } from 'expo-crypto';
 
 import { preferencesStore } from '@/state/preferences';
 import { createMockApi } from './mockApi';
-import { ApiError, type AttendanceSnapshot, type NewTaskInput, type OvertimeInput, type TimeOffInput } from './types';
+import { ApiError, type AttendanceSnapshot, type EmployeeInput, type NewTaskInput, type OvertimeInput, type ReportScope, type TimeOffInput } from './types';
 
 /**
  * Server-state layer (TanStack Query).
@@ -31,6 +31,14 @@ export const keys = {
   timesheet: (userId?: UserId, periodStart?: DateKey) => [...keys.all, 'timesheet', userId ?? 'me', periodStart ?? 'current'] as const,
   timesheets: () => [...keys.all, 'timesheet'] as const,
   team: () => [...keys.all, 'team'] as const,
+  attendanceReport: (scope: ReportScope, weeks: number) => [...keys.all, 'attendance-report', scope, weeks] as const,
+  executiveReport: (weeks: number) => [...keys.all, 'executive-report', weeks] as const,
+  directory: () => [...keys.all, 'directory'] as const,
+  profile: (id: UserId) => [...keys.all, 'profile', id] as const,
+  payroll: (start?: DateKey) => [...keys.all, 'payroll', start ?? 'latest'] as const,
+  admin: () => [...keys.all, 'admin'] as const,
+  deals: () => [...keys.all, 'deals'] as const,
+  notifications: () => [...keys.all, 'notifications'] as const,
   teamPulse: () => [...keys.all, 'team-pulse'] as const,
 };
 
@@ -77,6 +85,46 @@ export const useTimesheet = (userId?: UserId, periodStart?: DateKey) =>
     queryKey: keys.timesheet(userId, periodStart),
     queryFn: () => api.timesheet({ ...(userId !== undefined ? { userId } : {}), ...(periodStart !== undefined ? { periodStart } : {}) }),
   });
+export const useAttendanceReport = (scope: ReportScope, weeks: number) =>
+  useQuery({ queryKey: keys.attendanceReport(scope, weeks), queryFn: () => api.attendanceReport({ scope, weeks }), staleTime: 5 * 60_000 });
+export const useExecutiveReport = (weeks: number, enabled = true) =>
+  useQuery({ queryKey: keys.executiveReport(weeks), queryFn: () => api.executiveReport({ weeks }), staleTime: 5 * 60_000, enabled });
+export const useDirectory = () => useQuery({ queryKey: keys.directory(), queryFn: api.directory, staleTime: 10 * 60_000 });
+export const useProfile = (id: UserId, enabled = true) => useQuery({ queryKey: keys.profile(id), queryFn: () => api.profile(id), enabled });
+export const usePayroll = (start?: DateKey) => useQuery({ queryKey: keys.payroll(start), queryFn: () => api.payroll(start) });
+export const useAdmin = () => useQuery({ queryKey: keys.admin(), queryFn: api.admin });
+export const useDeals = () => useQuery({ queryKey: keys.deals(), queryFn: api.deals });
+export const useNotifications = () => useQuery({ queryKey: keys.notifications(), queryFn: api.notifications, refetchInterval: 60_000 });
+
+export function useLockPayroll() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (start: DateKey) => api.lockPayroll(start),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [...keys.all, 'payroll'] });
+      void qc.invalidateQueries({ queryKey: keys.timesheets() });
+    },
+  });
+}
+
+/** Employee management invalidates everything that depends on the org chart. */
+function usePeopleMutation<TArgs>(fn: (args: TArgs) => Promise<unknown>) {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: fn, onSuccess: () => qc.invalidateQueries({ queryKey: keys.all }) });
+}
+export const useCreateEmployee = () => usePeopleMutation((input: EmployeeInput) => api.createEmployee(input));
+export const useUpdateEmployee = () =>
+  usePeopleMutation(({ id, patch }: { id: UserId; patch: Partial<Omit<EmployeeInput, 'name'>> }) => api.updateEmployee(id, patch));
+export const useOffboardEmployee = () => usePeopleMutation((id: UserId) => api.offboardEmployee(id));
+
+export function useMarkNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: readonly string[]) => api.markNotificationsRead(ids),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.notifications() }),
+  });
+}
+
 export const useTeam = (enabled = true) => useQuery({ queryKey: keys.team(), queryFn: api.team, enabled, refetchInterval: 60_000 });
 
 export const useShifts = (from: DateKey, days: number) => {

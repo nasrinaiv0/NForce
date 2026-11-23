@@ -9,21 +9,22 @@ import type { IconName } from '@/components/Icon';
 import { LoadingBlock, Screen } from '@/components/Screen';
 import { Card, ListRow, ListSection } from '@/components/Surface';
 import { Text } from '@/components/Text';
-import { resetSession, useApprovals, useSession } from '@/data/queries';
+import { resetSession, useApprovals, useNotifications, useSession } from '@/data/queries';
 import { useTheme } from '@/design/theme';
 import { LOCALES, useI18n } from '@/i18n';
 import { setPreference, usePreference, type Preferences } from '@/state/preferences';
 
 const MODULE_META: Readonly<Record<ModuleId, { icon: IconName; tint: string; href: Href }>> = {
+  attendance: { icon: 'attendance', tint: '#30B0C7', href: '/more/attendance' },
   team: { icon: 'team', tint: '#0A84FF', href: '/more/team' },
   approvals: { icon: 'approvals', tint: '#FF9500', href: '/more/approvals' },
   timesheets: { icon: 'timesheets', tint: '#5856D6', href: '/more/timesheets' },
   timeoff: { icon: 'timeoff', tint: '#34C759', href: '/more/timeoff' },
-  people: { icon: 'people', tint: '#007AFF', href: '/more/module/people' },
-  payroll: { icon: 'payroll', tint: '#30B0C7', href: '/more/module/payroll' },
-  crm: { icon: 'crm', tint: '#AF52DE', href: '/more/module/crm' },
-  reports: { icon: 'reports', tint: '#FF2D55', href: '/more/module/reports' },
-  admin: { icon: 'admin', tint: '#8E8E93', href: '/more/module/admin' },
+  people: { icon: 'people', tint: '#007AFF', href: '/more/people' },
+  payroll: { icon: 'payroll', tint: '#30B0C7', href: '/more/payroll' },
+  crm: { icon: 'crm', tint: '#AF52DE', href: '/more/crm' },
+  reports: { icon: 'reports', tint: '#FF2D55', href: '/more/reports' },
+  admin: { icon: 'admin', tint: '#8E8E93', href: '/more/admin' },
 };
 
 export default function MoreScreen() {
@@ -33,6 +34,8 @@ export default function MoreScreen() {
   const session = useSession();
   const canApprove = session.data?.modules.includes('approvals') ?? false;
   const approvals = useApprovals(canApprove);
+  const notifications = useNotifications();
+  const unread = (notifications.data ?? []).filter((n) => !n.read).length;
   const locale = usePreference('locale');
   const haptics = usePreference('haptics');
   const reduceMotion = usePreference('reduceMotion');
@@ -66,11 +69,22 @@ export default function MoreScreen() {
         </Card>
       )}
 
+      <ListSection>
+        <ListRow
+          title={tr('notify.title')}
+          icon="bell"
+          iconTint="#FF3B30"
+          onPress={() => router.push('/more/notifications')}
+          trailing={unread > 0 ? <Pill label={String(unread)} tone="danger" /> : undefined}
+          last
+        />
+      </ListSection>
+
       {session.data !== undefined && (
         <ListSection title={tr('more.workspace')}>
           {session.data.modules.map((m, idx, list) => {
             const meta = MODULE_META[m];
-            const count = m === 'approvals' ? (approvals.data?.length ?? 0) : 0;
+            const count = m === 'approvals' ? (approvals.data ?? []).filter((a) => a.canDecide).length : 0;
             return (
               <ListRow
                 key={m}
