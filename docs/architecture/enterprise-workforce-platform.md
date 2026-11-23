@@ -240,7 +240,11 @@ Confirm before implementation: initial customer scope (internal, multi-tenant Sa
 | Authorization (RBAC + ABAC, scopes, delegations, SoD, locked records) | Implemented and unit-tested in core; mirrored in SQL RLS | `packages/core/src/access`, `supabase/migrations` |
 | Tenancy, org structure, memberships, roles | Implemented in SQL with RLS and tests | `supabase/migrations`, `supabase/tests` |
 | Attendance (immutable events, idempotent clock RPC, replay, exceptions) | Implemented (core + SQL) | `packages/core/src/attendance`, `record_attendance_event()` |
-| Timesheet lifecycle and post-lock adjustments | Implemented in core; SQL tables *Planned (Phase 2)* | `packages/core/src/timesheet` |
+| Timesheet lifecycle and post-lock adjustments | Implemented in core; SQL tables *Planned* | `packages/core/src/timesheet` |
+| Reporting hierarchy, hierarchy-aware scope, hierarchical approvals (supervisor → manager final) | Implemented (core + SQL + app) and tested | `packages/core/src/approvals`, `supabase/migrations/20261124000000_hierarchy_approvals.sql` |
+| Pay categories (REG/OT/ND/RD/SH/RH and combinations, minimum OT block, OT authorization) | Implemented in core; used by app timesheets | `packages/core/src/pay` |
+| List querying (filter, search, sort) | Implemented in core; used by all lists | `packages/core/src/collections` |
+| Desktop mode (sidebar, multi-column, data tables) and user customization (theme, accent, density, home layout) | Implemented in app | `apps/mobile/src/components/Sidebar.tsx`, `apps/mobile/src/app/(tabs)/more/customize.tsx` |
 | Leave vs day-off rules | Implemented in core; SQL tables *Planned (Phase 2)* | `packages/core/src/leave` |
 | Mobile app: Home, Work, Clock, Schedule, More, Approvals, Timesheets, Time off | Implemented against an in-memory backend | `apps/mobile` |
 | Real authentication / Supabase client | *Planned* | — |

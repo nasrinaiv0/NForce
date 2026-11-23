@@ -8,3 +8,6 @@ export * from './timesheet/timesheet';
 export * from './leave/leave';
 export * from './work/tasks';
 export * from './workspace/navigation';
+export * from './approvals/chain';
+export * from './pay/classify';
+export * from './collections/query';

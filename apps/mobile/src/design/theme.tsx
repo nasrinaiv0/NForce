@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { AccessibilityInfo, Platform, useColorScheme } from 'react-native';
 
 import { usePreference } from '@/state/preferences';
+import { applyAccent, type AccentId } from './accents';
 import {
   MIN_TOUCH,
   PALETTES,
@@ -13,6 +14,7 @@ import {
   type Flavor,
   type Palette,
   type Shape,
+  type SpaceScale,
 } from './tokens';
 
 export interface Theme {
@@ -21,14 +23,19 @@ export interface Theme {
   readonly colors: Palette;
   readonly shape: Shape;
   readonly type: (typeof TYPE_RAMPS)[Flavor];
-  readonly space: typeof space;
+  readonly space: SpaceScale;
   readonly motion: typeof motion;
   readonly minTouch: number;
   /** True when the OS or the user asked for reduced motion. */
   readonly reduceMotion: boolean;
+  readonly accent: AccentId;
+  readonly density: 'comfortable' | 'compact';
 }
 
 const ThemeContext = createContext<Theme | null>(null);
+
+/** Compact density tightens the larger steps; touch targets stay compliant. */
+const COMPACT_SPACE: SpaceScale = { ...space, md: 10, lg: 12, xl: 16, xxl: 18, xxxl: 24 };
 
 function platformFlavor(): Flavor {
   if (Platform.OS === 'android') return 'android';
@@ -62,22 +69,28 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const flavorPref = usePreference('flavor');
   const userReduceMotion = usePreference('reduceMotion');
   const systemReduceMotion = useSystemReduceMotion();
+  const accent = usePreference('accent');
+  const density = usePreference('density');
 
   const theme = useMemo<Theme>(() => {
     const scheme: ColorScheme = appearance === 'system' ? (system === 'dark' ? 'dark' : 'light') : appearance;
     const flavor: Flavor = flavorPref === 'auto' ? platformFlavor() : flavorPref;
+    const compact = density === 'compact';
+    const baseShape = SHAPES[flavor];
     return {
       flavor,
       scheme,
-      colors: PALETTES[flavor][scheme],
-      shape: SHAPES[flavor],
+      colors: applyAccent(PALETTES[flavor][scheme], accent, flavor, scheme),
+      shape: compact ? { ...baseShape, rowMinHeight: baseShape.rowMinHeight - 8, buttonHeight: baseShape.buttonHeight - 6, card: baseShape.card - 4 } : baseShape,
       type: TYPE_RAMPS[flavor],
-      space,
+      space: compact ? COMPACT_SPACE : space,
       motion,
       minTouch: MIN_TOUCH[flavor],
       reduceMotion: systemReduceMotion || userReduceMotion,
+      accent,
+      density,
     };
-  }, [appearance, system, flavorPref, systemReduceMotion, userReduceMotion]);
+  }, [appearance, system, flavorPref, systemReduceMotion, userReduceMotion, accent, density]);
 
   return <ThemeContext.Provider value={theme}>{children}</ThemeContext.Provider>;
 }

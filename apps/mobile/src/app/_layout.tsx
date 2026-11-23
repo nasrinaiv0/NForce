@@ -77,6 +77,18 @@ function AppShell() {
           }}
         />
         <Stack.Screen
+          name="request-overtime"
+          options={{
+            presentation: 'modal',
+            headerShown: true,
+            title: tr('overtime.title'),
+            headerStyle: { backgroundColor: t.colors.background },
+            headerTintColor: t.colors.primary,
+            headerTitleStyle: { color: t.colors.text },
+            contentStyle: { backgroundColor: t.colors.background },
+          }}
+        />
+        <Stack.Screen
           name="request-time-off"
           options={{
             presentation: 'modal',

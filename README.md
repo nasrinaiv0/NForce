@@ -25,7 +25,21 @@ npm run test:db      # database migrations + RLS tests (requires PostgreSQL 15+ 
 
 Native features (SF Symbols, native tabs, haptics) need a development build: `npx expo run:ios`, `npx expo run:android`, or EAS Build. They are not available in Expo Go.
 
-In the app, open **More → Workspace profile (demo)** to switch between Staff, Supervisor, HR, Executive and other roles. Navigation, home widgets and allowed actions change because the (mock) server enforces permissions. **More → Platform look** switches between the iOS and Android designs.
+In the app, open **More → Workspace profile (demo)** to switch between people in a real reporting hierarchy: Staff (Jordan) → Supervisor (Maya) → Manager (Elena) → Executive (Rafael), plus HR, Payroll, Operations and Admin. Navigation, home widgets, what you can see and what you can approve all change, because the (mock) server enforces permissions. **More → Customize** sets theme, accent color, density, platform look (iOS/Android), sidebar style and the Home layout. Widen the browser past 600 px to get the desktop sidebar layout.
+
+## Screenshots
+
+| Phone (iOS look, light) | Phone (Android look, dark) |
+| --- | --- |
+| ![iOS screens](docs/screenshots/1-phone-ios-light.jpg) | ![Android screens](docs/screenshots/2-phone-android-dark.jpg) |
+
+| Desktop | |
+| --- | --- |
+| ![Home](docs/screenshots/3-desktop-home.jpg) | ![Team table](docs/screenshots/4-desktop-team-table.jpg) |
+| ![Approvals](docs/screenshots/5-desktop-approvals.jpg) | ![Timesheet with pay categories](docs/screenshots/6-desktop-timesheet-pay.jpg) |
+| ![Customize, dark violet](docs/screenshots/7-desktop-customize-dark-violet.jpg) | ![Icon rail, compact, orange](docs/screenshots/8-desktop-rail-compact-orange.jpg) |
+
+Rendered from the production web bundle with Playwright, with mock data. Not yet captured on physical devices.
 
 ## Documentation
 

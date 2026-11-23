@@ -38,6 +38,8 @@ export interface Subject {
   readonly delegations?: readonly Delegation[];
   readonly teamIds: readonly TeamId[];
   readonly departmentId?: DepartmentId;
+  /** The actor's own managers, nearest first (used to block upward visibility). */
+  readonly managerChain?: readonly UserId[];
 }
 
 /** Attributes of the record being accessed. */
@@ -47,6 +49,11 @@ export interface ResourceContext {
   readonly subjectUserId?: UserId;
   readonly teamId?: TeamId;
   readonly departmentId?: DepartmentId;
+  /**
+   * The record subject's reporting line, nearest manager first. A person in
+   * your reporting line (direct or indirect report) is in your team scope.
+   */
+  readonly managerChain?: readonly UserId[];
   /** Contains salary, medical, identity-document or other confidential fields. */
   readonly sensitive?: boolean;
   /** Workflow state forbids ordinary edits (e.g. a locked timesheet). */
@@ -114,7 +121,11 @@ export function effectiveGrants(subject: Subject, now: Date): {
 /** The narrowest scope that covers the relationship between actor and record. */
 export function requiredScope(subject: Subject, resource: ResourceContext): Scope {
   if (resource.subjectUserId !== undefined && resource.subjectUserId === subject.userId) return 'self';
+  // Looking UP the reporting line (at your own managers) needs organization
+  // scope: department scope never exposes the people you report to.
+  if (resource.subjectUserId !== undefined && subject.managerChain?.includes(resource.subjectUserId) === true) return 'organization';
   if (resource.teamId !== undefined && subject.teamIds.includes(resource.teamId)) return 'team';
+  if (resource.managerChain?.includes(subject.userId) === true) return 'team';
   if (resource.departmentId !== undefined && resource.departmentId === subject.departmentId) return 'department';
   return 'organization';
 }
@@ -155,6 +166,11 @@ export function authorize(
   const roleScope = fromRoles.get(permission);
   const via = roleScope !== undefined && scopeRank(roleScope) >= scopeRank(needed) ? 'role' : 'delegation';
   return { allowed: true, scope: granted, via };
+}
+
+/** Widest scope at which the subject currently holds `permission`, if any. */
+export function grantScope(subject: Subject, permission: Permission, now: Date = new Date()): Scope | undefined {
+  return subject.status === 'active' ? effectiveGrants(subject, now).all.get(permission) : undefined;
 }
 
 /** UI helper: does the subject hold `permission` at any scope right now? */

@@ -3,6 +3,7 @@ import { RefreshControl, ScrollView, StyleSheet, View, type StyleProp, type View
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/design/theme';
+import { useResponsive } from '@/hooks/useResponsive';
 import { useI18n } from '@/i18n';
 import { Button } from './Button';
 import { Skeleton } from './Display';
@@ -18,14 +19,18 @@ export function Screen({
   onRefresh,
   contentStyle,
   footer,
+  maxWidth = 1240,
 }: {
   children: ReactNode;
   onRefresh?: () => Promise<unknown>;
   contentStyle?: StyleProp<ViewStyle>;
   footer?: ReactNode;
+  /** Max content width on desktop (default 1240). */
+  maxWidth?: number;
 }) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
+  const { isDesktop, sidebar } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const refresh = useCallback(async () => {
     if (onRefresh === undefined) return;
@@ -46,7 +51,14 @@ export function Screen({
         style={{ backgroundColor: t.colors.background }}
         contentContainerStyle={[
           styles.content,
-          { padding: t.space.lg, gap: t.space.xxl, paddingBottom: insets.bottom + 96 },
+          {
+            padding: isDesktop ? t.space.xxxl : t.space.lg,
+            gap: t.space.xxl,
+            paddingBottom: sidebar ? t.space.xxxl : insets.bottom + 96,
+            width: '100%',
+            maxWidth,
+            alignSelf: 'center',
+          },
           contentStyle,
         ]}
         refreshControl={

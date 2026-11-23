@@ -1,6 +1,6 @@
 import { authorize, type Subject } from '../access/policy';
 import type { Permission } from '../access/permissions';
-import type { OrganizationId, TeamId, UserId } from '../ids';
+import type { DepartmentId, OrganizationId, TeamId, UserId } from '../ids';
 import { err, ok, type DomainError, type Result } from '../result';
 import type { DateKey } from '../time/time';
 
@@ -41,6 +41,9 @@ export interface Timesheet {
   readonly organizationId: OrganizationId;
   readonly userId: UserId;
   readonly teamId?: TeamId;
+  readonly departmentId?: DepartmentId;
+  /** The owner's managers, nearest first: lets their line approve it. */
+  readonly managerChain?: readonly UserId[];
   readonly periodStart: DateKey;
   readonly periodEnd: DateKey;
   readonly status: TimesheetStatus;
@@ -73,6 +76,8 @@ const resourceOf = (sheet: Timesheet) => ({
   organizationId: sheet.organizationId,
   subjectUserId: sheet.userId,
   ...(sheet.teamId !== undefined ? { teamId: sheet.teamId } : {}),
+  ...(sheet.departmentId !== undefined ? { departmentId: sheet.departmentId } : {}),
+  ...(sheet.managerChain !== undefined ? { managerChain: sheet.managerChain } : {}),
   locked: sheet.status === 'locked',
 });
 

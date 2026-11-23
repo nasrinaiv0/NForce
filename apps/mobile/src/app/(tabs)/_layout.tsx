@@ -5,8 +5,10 @@ import { Platform, View } from 'react-native';
 import type { SFSymbol } from 'sf-symbols-typescript';
 
 import { Icon, type IconName } from '@/components/Icon';
+import { Sidebar } from '@/components/Sidebar';
 import { useApprovals, useSession } from '@/data/queries';
 import { useTheme } from '@/design/theme';
+import { useResponsive } from '@/hooks/useResponsive';
 import { useI18n, type MessageKey } from '@/i18n';
 
 interface TabSpec {
@@ -30,7 +32,7 @@ function usePendingApprovals(): number {
   const session = useSession();
   const canApprove = session.data?.modules.includes('approvals') ?? false;
   const approvals = useApprovals(canApprove);
-  return canApprove ? (approvals.data?.length ?? 0) : 0;
+  return canApprove ? (approvals.data ?? []).filter((a) => a.canDecide).length : 0;
 }
 
 /**
@@ -39,7 +41,20 @@ function usePendingApprovals(): number {
  * The web preview uses a JS bottom bar styled to the active flavor.
  */
 export default function TabsLayout() {
+  const { sidebar } = useResponsive();
+  if (sidebar) return <SidebarTabs />;
   return Platform.OS === 'web' ? <WebTabs /> : <DeviceTabs />;
+}
+
+/** Desktop / large screens: the same routes, navigated from a sidebar. */
+function SidebarTabs() {
+  return (
+    <Tabs tabBar={() => <Sidebar />} screenOptions={{ headerShown: false, tabBarPosition: 'left' }}>
+      {TABS.map((tab) => (
+        <Tabs.Screen key={tab.name} name={tab.name} />
+      ))}
+    </Tabs>
+  );
 }
 
 function DeviceTabs() {
@@ -52,6 +67,7 @@ function DeviceTabs() {
       backgroundColor={t.flavor === 'android' ? t.colors.surface : undefined}
       badgeBackgroundColor={t.colors.danger}
       minimizeBehavior="onScrollDown"
+      sidebarAdaptable
     >
       {TABS.map((tab) => (
         <NativeTabs.Trigger key={tab.name} name={tab.name}>

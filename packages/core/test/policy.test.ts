@@ -4,6 +4,7 @@ import {
   ROLE_GRANTS,
   ROLE_TEMPLATES,
   authorize,
+  grantScope,
   hasPermission,
   homeWidgets,
   isPermission,
@@ -127,6 +128,28 @@ describe('authorize', () => {
     expect(authorize(alice, 'timeoff.approve', teammate, new Date('2026-11-19T23:59:59Z')).allowed).toBe(false);
   });
 
+  it('treats anyone in your reporting line as team scope', () => {
+    const { departmentId: _noDepartment, ...mgr } = subject(BOB, ['supervisor'], { teamIds: [] });
+    const indirect = { organizationId: ORG, subjectUserId: CARA, managerChain: [ALICE, BOB] };
+    expect(requiredScope(mgr, indirect)).toBe('team');
+    expect(authorize(mgr, 'attendance.view', indirect, now).allowed).toBe(true);
+    expect(authorize(mgr, 'attendance.view', { ...indirect, managerChain: [ALICE] }, now).allowed).toBe(false);
+  });
+
+  it('never lets department scope look up the reporting line', () => {
+    const mgr = subject(BOB, ['manager'], { teamIds: [], managerChain: [CARA] });
+    const myBoss = { organizationId: ORG, subjectUserId: CARA, departmentId: DEPT };
+    expect(requiredScope(mgr, myBoss)).toBe('organization');
+    expect(authorize(mgr, 'attendance.view', myBoss, now)).toEqual({ allowed: false, reason: 'out_of_scope' });
+    expect(authorize(subject(BOB, ['operations'], { managerChain: [CARA] }), 'attendance.view', myBoss, now).allowed).toBe(true);
+  });
+
+  it('reports the widest grant scope', () => {
+    expect(grantScope(subject(BOB, ['supervisor']), 'attendance.view', now)).toBe('team');
+    expect(grantScope(subject(BOB, ['staff']), 'timesheet.approve', now)).toBeUndefined();
+    expect(grantScope(subject(BOB, ['manager'], { status: 'ended' }), 'attendance.view', now)).toBeUndefined();
+  });
+
   it('computes the narrowest required scope', () => {
     const bob = subject(BOB, ['supervisor']);
     expect(requiredScope(bob, { organizationId: ORG, subjectUserId: BOB })).toBe('self');
@@ -154,6 +177,12 @@ describe('workspace composition', () => {
     expect(visibleModules(subject(BOB, ['org_admin']), now)).toContain('admin');
     expect(visibleModules(subject(BOB, ['payroll']), now)).toContain('payroll');
     expect(visibleModules(subject(BOB, ['executive']), now)).not.toContain('payroll');
+    // Team view needs person-level attendance beyond self: executives get aggregates only.
+    expect(visibleModules(subject(BOB, ['supervisor']), now)).toContain('team');
+    expect(visibleModules(subject(BOB, ['manager']), now)).toContain('team');
+    expect(visibleModules(subject(BOB, ['executive']), now)).not.toContain('team');
+    expect(visibleModules(subject(BOB, ['staff']), now)).not.toContain('team');
+    expect(visibleModules(subject(BOB, ['hr']), now)).not.toContain('approvals');
     expect(homeWidgets(subject(BOB, ['executive']), now)).toContain('org_metrics');
   });
 });

@@ -1,5 +1,5 @@
-import { hasPermission, type Subject } from '../access/policy';
-import type { Permission } from '../access/permissions';
+import { grantScope, hasPermission, type Subject } from '../access/policy';
+import { scopeRank, type Permission, type Scope } from '../access/permissions';
 
 /**
  * Role-aware workspace composition. One app shell; modules and home widgets
@@ -8,6 +8,7 @@ import type { Permission } from '../access/permissions';
  */
 
 export type ModuleId =
+  | 'team'
   | 'timesheets'
   | 'timeoff'
   | 'approvals'
@@ -19,12 +20,15 @@ export type ModuleId =
 
 export interface ModuleDefinition {
   readonly id: ModuleId;
-  /** Any one of these permissions unlocks the module. */
+  /** Any one of these permissions unlocks the module… */
   readonly anyOf: readonly Permission[];
+  /** …when held at least at this scope (default: any scope). */
+  readonly minScope?: Scope;
 }
 
 export const MODULES: readonly ModuleDefinition[] = [
   { id: 'approvals', anyOf: ['timesheet.approve', 'timeoff.approve', 'attendance.correct'] },
+  { id: 'team', anyOf: ['attendance.view'], minScope: 'team' },
   { id: 'timesheets', anyOf: ['timesheet.view'] },
   { id: 'timeoff', anyOf: ['timeoff.request', 'timeoff.view'] },
   { id: 'people', anyOf: ['people.directory', 'people.view'] },
@@ -35,7 +39,13 @@ export const MODULES: readonly ModuleDefinition[] = [
 ];
 
 export function visibleModules(subject: Subject, now: Date = new Date()): ModuleId[] {
-  return MODULES.filter((m) => m.anyOf.some((p) => hasPermission(subject, p, now))).map((m) => m.id);
+  const min = (m: ModuleDefinition) => scopeRank(m.minScope ?? 'self');
+  return MODULES.filter((m) =>
+    m.anyOf.some((p) => {
+      const scope = grantScope(subject, p, now);
+      return scope !== undefined && scopeRank(scope) >= min(m);
+    }),
+  ).map((m) => m.id);
 }
 
 export type HomeWidget = 'clock' | 'next_shift' | 'my_work' | 'balances' | 'team_pulse' | 'approvals' | 'org_metrics';

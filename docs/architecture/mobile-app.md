@@ -1,7 +1,7 @@
 # NForce Mobile App Architecture (iOS & Android)
 
-**Status:** Implemented (Phase 1 foundation, workforce core preview) — runs against an in-memory backend  
-**Last updated:** 2026-11-23  
+**Status:** Implemented (Phase 1 foundation + Phase 2 workforce core) — runs against an in-memory backend  
+**Last updated:** 2026-11-23 (rev. 2)  
 **Code:** [`apps/mobile`](../../apps/mobile), [`packages/core`](../../packages/core), [`supabase`](../../supabase)
 
 This document describes what is **implemented** in the repository today. Items marked *Planned* are not built yet.
@@ -126,11 +126,40 @@ npm run test:db        # migrations + SQL security tests (needs PostgreSQL 15+ b
 
 Native modules (SF Symbols, native tabs, haptics) need a development build (`npx expo run:ios` / `run:android`, or EAS Build). They are not available in Expo Go.
 
-## 11. Known gaps (not implemented)
+## 11. Hierarchy, approvals and pay (Phase 2)
+
+**Reporting hierarchy.** Every membership has a `reports_to` manager (same tenant, cycle-free). Access follows the line:
+
+| Viewer | Sees (attendance, timesheets, requests) | Decides |
+| --- | --- | --- |
+| Staff | Self only | — |
+| Supervisor | Their direct and indirect reports (team scope) | Supervisor review step |
+| Manager | Their department and reporting line, never the people they report to | **Final approval of every request in their line, at any stage** |
+| Executive | Aggregates only (no person-level attendance) | Final approval of managers' own requests |
+| HR | Time off org-wide (view) | — (HR does not approve) |
+| Operations | Org-wide attendance/schedules | — |
+
+Looking *up* the reporting line requires organization scope, so a manager can't see their VP's attendance through department scope. This is enforced in `authorize()` and in SQL `app.relation_scope()`, and tested in both.
+
+**Approval routing** (`@nforce/core` `approvals/chain.ts`, SQL `submit_request` / `decide_request`): leave, day off, overtime, timesheet and correction requests go *supervisor review → manager final approval*. A supervisor's own request goes straight to the manager; a manager's request goes to the next manager-tier person. Managers may approve at any time, which marks a pending review as *skipped*. Returns need a reason. Nobody decides their own request. Final decisions update the authoritative records: the leave balance, roster, timesheet status, approved OT minutes, and correction events. A decision is validated fully before it is committed, so it is never half-applied.
+
+**Pay categories** (`@nforce/core` `pay/classify.ts`) classify worked minutes per day into regular, overtime, night differential (22:00–06:00), rest day, special non-working day and regular holiday, plus every combination. Each line has a stable payroll code (e.g. `RD_OT_ND`) and multiplier. Defaults follow the commonly published Philippine Labor Code premiums (OT 125%, rest day/special 130%, rest-day OT 169%, regular holiday 200%, regular holiday on a rest day 260%, ND +10%). Overtime below the policy's minimum block (default 30 min) is recorded as excess time, not OT. Approved OT requests are matched per day, and the timesheet shows worked / approved / pending OT with a one-tap "File OT". The policy is data: other jurisdictions and CBAs configure their own. **Validate with payroll and legal professionals before production use.**
+
+**Lists:** `@nforce/core` `collections/query.ts` gives every list the same filter → search (accent- and case-insensitive) → stable, locale-aware sort with missing values last. It's used by Approvals (needs-my-action vs. all-in-scope, type, search, sort), Team (status, team, search, six sort keys; sortable table headers on desktop), Work (priority, search, sort within due-date groups) and Time off (status, sort).
+
+## 12. Desktop mode and customization
+
+- **Window size classes** (M3): compact < 600 ≤ medium < 840 ≤ expanded < 1200 ≤ large. On web and large Android screens the bottom bar becomes a **sidebar** (logo, org, role-filtered modules with approval badge, user presence), expanded or icon-only rail. iPad uses the native tab-bar sidebar (`sidebarAdaptable`).
+- **Desktop layouts:** centered max-width content. Home is two balanced columns; Approvals is a card grid; Team is a sortable data table; Timesheet and Time off use two columns.
+- **Customize** (More → Customize): theme (system/light/dark), 9 accent colors (default *NForce teal* from the logo, teal→navy brand gradient), density (comfortable/compact), platform look, desktop sidebar style, and the Home layout (reorder and show/hide widgets; widgets your role doesn't allow are never shown). Every accent is generated per flavor and scheme, and a test checks WCAG AA contrast for all 36 combinations.
+- **Brand:** the NForce logo (teal/navy cube) is the app icon, Android adaptive icon (foreground, background and monochrome), splash, favicon and sidebar mark. The source was a 451×484 JPEG, so a vector or ≥1024 px original should replace it before store submission.
+
+## 13. Known gaps (not implemented)
 
 - Real authentication and the Supabase-backed `NForceApi` (mock only today).
 - Offline outbox for clock events (idempotency keys are ready for it).
 - Push notifications, widgets/Live Activities, Wear OS / watchOS.
 - Native-device verification: the UI was verified with typecheck, lint and rendered web previews of both flavors. It has **not** yet been run on physical iOS/Android devices or simulators in CI.
 - Screens for People, Payroll, CRM, Reports and Admin (roadmap placeholders with permissions wired).
-- Timesheet/leave/approval tables in SQL (Phase 2). The foundation migration covers tenancy, access and attendance.
+- Timesheet and leave-balance tables in SQL (approval requests, holidays and the reporting line are implemented in migration 2).
+- Pay amounts/payroll export: classification produces hours and multipliers only.

@@ -16,8 +16,9 @@ const sql = readdirSync(migrationsDir)
   .map((f) => readFileSync(join(migrationsDir, f), 'utf8'))
   .join('\n');
 
+// Template re-syncs ship as new migrations, so the LAST seed block is authoritative.
 const block = (start: string) => {
-  const from = sql.indexOf(start);
+  const from = sql.lastIndexOf(start);
   if (from < 0) throw new Error(`Missing seed block: ${start}`);
   return sql.slice(from, sql.indexOf(';', from));
 };

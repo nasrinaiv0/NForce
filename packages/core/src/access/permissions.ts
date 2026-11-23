@@ -150,15 +150,16 @@ export const ROLE_GRANTS: Readonly<Record<RoleTemplate, readonly Grant[]>> = {
     ...STAFF,
     ...g('organization', 'schedule.view', 'schedule.manage', 'attendance.view', 'work.view', 'work.assign', 'reports.team'),
   ],
-  hr: [
-    ...STAFF,
-    ...g('organization', 'people.view', 'people.view.sensitive', 'people.manage', 'timeoff.view', 'timeoff.approve'),
-  ],
+  // HR sees all time off but does not approve it: approvals follow the
+  // reporting line and are finalized by managers (see approvals/chain.ts).
+  hr: [...STAFF, ...g('organization', 'people.view', 'people.view.sensitive', 'people.manage', 'timeoff.view', 'timesheet.view')],
   payroll: [
     ...STAFF,
     ...g('organization', 'timesheet.view', 'timesheet.lock', 'timesheet.adjust', 'payroll.view', 'payroll.prepare', 'payroll.export'),
   ],
-  executive: [...STAFF, ...g('organization', 'reports.team', 'reports.organization', 'crm.view')],
+  // Executives see aggregates and act as final approvers for managers' own
+  // requests; person-level attendance detail is not granted by default.
+  executive: [...STAFF, ...g('organization', 'reports.team', 'reports.organization', 'crm.view', 'timeoff.approve', 'timesheet.approve')],
   org_admin: [...STAFF, ...g('organization', 'admin.settings', 'admin.roles', 'admin.audit', 'people.view')],
 };
 

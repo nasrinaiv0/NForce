@@ -6,7 +6,7 @@ import {
   transitionTimesheet,
   type Timesheet,
 } from '../src';
-import { ALICE, BOB, ORG, TEAM_A, subject } from './fixtures';
+import { ALICE, BOB, DEPT, ORG, TEAM_A, subject } from './fixtures';
 
 const alice = subject(ALICE, ['staff']);
 const bob = subject(BOB, ['supervisor']);
@@ -65,6 +65,16 @@ describe('timesheet lifecycle', () => {
     const returned = must(transitionTimesheet(submitted, 'return', bob, { reason: 'Missing Friday' }));
     expect(returned.history.at(-1)?.reason).toBe('Missing Friday');
     expect(must(transitionTimesheet(returned, 'submit', alice)).status).toBe('submitted');
+  });
+
+  it('lets a department manager approve when the sheet carries hierarchy context', () => {
+    const submitted = must(transitionTimesheet({ ...sheet, teamId: undefined as never }, 'submit', alice));
+    const { teamId: _noTeam, ...bare } = submitted;
+    const manager = subject(BOB, ['manager'], { teamIds: [] });
+    expect(transitionTimesheet(bare, 'approve', manager)).toMatchObject({ ok: false, error: { code: 'forbidden' } });
+    expect(must(transitionTimesheet({ ...bare, departmentId: DEPT }, 'approve', manager)).status).toBe('approved');
+    const lineManager = subject(BOB, ['supervisor'], { teamIds: [], departmentId: undefined as never });
+    expect(must(transitionTimesheet({ ...bare, managerChain: [BOB] }, 'approve', lineManager)).status).toBe('approved');
   });
 
   it('lists only actions the actor may take', () => {

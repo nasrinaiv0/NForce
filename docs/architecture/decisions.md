@@ -36,3 +36,17 @@ Short, durable records of significant decisions. Status values: Proposed / Accep
 - **Context:** UX and rules need to be exercised before auth and hosting decisions (open questions in the architecture doc §16) are final.
 - **Decision:** Screens depend on the `NForceApi` interface. `createMockApi` implements it using the real core rules and is also used in tests.
 - **Consequences:** Product reviews and demos run without infrastructure. Do not present the mock as production behavior. Network latency, auth and persistence are simulated or absent.
+
+## ADR-006 — Approvals follow the reporting line; managers give final approval
+
+- **Status:** Accepted (2026-11-23)
+- **Context:** Requests must be approved by the right people, with managers accountable for every request in their line, and without approval bottlenecks when a supervisor is unavailable.
+- **Decision:** Route every request up `reports_to`: supervisor review, then manager final approval. Managers may decide at any stage (skipping review). Executives finalize managers' own requests. HR views but doesn't approve. Looking up the reporting line requires organization scope. The rules live in `@nforce/core` and are mirrored by SQL RPCs with RLS. Both are tested.
+- **Consequences:** Accurate reporting lines become critical data (cycles are rejected; missing approvers fail loudly). Delegations cover absences.
+
+## ADR-007 — Pay categories are classified as data-driven hours, not money
+
+- **Status:** Accepted (2026-11-23)
+- **Context:** Night differential, overtime, rest-day and holiday premiums drive payroll. Rules differ by jurisdiction and contract.
+- **Decision:** Classify worked minutes per day into coded lines with multipliers from a versionable `PayPolicy` (PH Labor Code defaults, minimum OT block). Shifts are attributed to their start date. Payroll systems apply rates. OT is paid only when an approved OT request covers it.
+- **Consequences:** Transparent, testable hours for employees and payroll. Money calculations, statutory contributions and alternative attribution rules remain payroll-provider responsibilities and must be validated by professionals.

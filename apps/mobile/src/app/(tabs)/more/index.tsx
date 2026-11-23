@@ -3,7 +3,7 @@ import Constants from 'expo-constants';
 import { router, type Href } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
-import { Chip, SegmentedControl, Toggle } from '@/components/Controls';
+import { Chip, Toggle } from '@/components/Controls';
 import { Avatar, Pill } from '@/components/Display';
 import type { IconName } from '@/components/Icon';
 import { LoadingBlock, Screen } from '@/components/Screen';
@@ -15,6 +15,7 @@ import { LOCALES, useI18n } from '@/i18n';
 import { setPreference, usePreference, type Preferences } from '@/state/preferences';
 
 const MODULE_META: Readonly<Record<ModuleId, { icon: IconName; tint: string; href: Href }>> = {
+  team: { icon: 'team', tint: '#0A84FF', href: '/more/team' },
   approvals: { icon: 'approvals', tint: '#FF9500', href: '/more/approvals' },
   timesheets: { icon: 'timesheets', tint: '#5856D6', href: '/more/timesheets' },
   timeoff: { icon: 'timeoff', tint: '#34C759', href: '/more/timeoff' },
@@ -32,11 +33,9 @@ export default function MoreScreen() {
   const session = useSession();
   const canApprove = session.data?.modules.includes('approvals') ?? false;
   const approvals = useApprovals(canApprove);
-  const appearance = usePreference('appearance');
   const locale = usePreference('locale');
   const haptics = usePreference('haptics');
   const reduceMotion = usePreference('reduceMotion');
-  const flavor = usePreference('flavor');
   const persona = usePreference('persona');
 
   const switchPersona = (role: Preferences['persona']) => {
@@ -88,17 +87,13 @@ export default function MoreScreen() {
       )}
 
       <ListSection title={tr('more.preferences')}>
-        <Field label={tr('more.appearance')}>
-          <SegmentedControl
-            segments={[
-              { value: 'system', label: tr('more.appearance.system') },
-              { value: 'light', label: tr('more.appearance.light') },
-              { value: 'dark', label: tr('more.appearance.dark') },
-            ]}
-            value={appearance}
-            onChange={(v) => setPreference('appearance', v)}
-          />
-        </Field>
+        <ListRow
+          title={tr('customize.title')}
+          subtitle={tr('customize.subtitle')}
+          icon="palette"
+          iconTint="#AF52DE"
+          onPress={() => router.push('/more/customize')}
+        />
         <Field label={tr('more.language')}>
           <View style={styles.chips}>
             <Chip label={tr('more.language.system')} selected={locale === 'system'} onPress={() => setPreference('locale', 'system')} />
@@ -106,17 +101,6 @@ export default function MoreScreen() {
               <Chip key={l.id} label={l.native} selected={locale === l.id} onPress={() => setPreference('locale', l.id)} />
             ))}
           </View>
-        </Field>
-        <Field label={tr('more.look')}>
-          <SegmentedControl
-            segments={[
-              { value: 'auto', label: tr('more.look.auto') },
-              { value: 'ios', label: 'iOS' },
-              { value: 'android', label: 'Android' },
-            ]}
-            value={flavor}
-            onChange={(v) => setPreference('flavor', v)}
-          />
         </Field>
         <ListRow
           title={tr('more.haptics')}
@@ -132,6 +116,17 @@ export default function MoreScreen() {
           last
         />
       </ListSection>
+
+      {session.data?.manager !== undefined && (
+        <ListSection title={tr('more.reportsTo')}>
+          <ListRow
+            title={session.data.manager.name}
+            subtitle={session.data.manager.title}
+            leading={<Avatar initials={session.data.manager.initials} hue={session.data.manager.hue} size={36} />}
+            last
+          />
+        </ListSection>
+      )}
 
       <ListSection title={tr('more.persona')} footer={tr('more.personaFooter')}>
         <View style={[styles.chips, { padding: t.space.lg }]}>

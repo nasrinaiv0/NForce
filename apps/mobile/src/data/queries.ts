@@ -1,10 +1,10 @@
 import { MutationCache, QueryCache, QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { addDays, type AttendanceEventType, type DateKey, type TimesheetAction } from '@nforce/core';
+import { addDays, type AttendanceEventType, type DateKey, type TimesheetAction, type UserId } from '@nforce/core';
 import { randomUUID } from 'expo-crypto';
 
 import { preferencesStore } from '@/state/preferences';
 import { createMockApi } from './mockApi';
-import { ApiError, type AttendanceSnapshot, type NewTaskInput, type TimeOffInput } from './types';
+import { ApiError, type AttendanceSnapshot, type NewTaskInput, type OvertimeInput, type TimeOffInput } from './types';
 
 /**
  * Server-state layer (TanStack Query).
@@ -25,9 +25,12 @@ export const keys = {
   shifts: (from: DateKey, to: DateKey) => [...keys.all, 'shifts', from, to] as const,
   tasks: () => [...keys.all, 'tasks'] as const,
   balances: () => [...keys.all, 'balances'] as const,
-  timeOff: () => [...keys.all, 'timeoff'] as const,
+  requests: () => [...keys.all, 'my-requests'] as const,
+  approverPreview: () => [...keys.all, 'approver-preview'] as const,
   approvals: () => [...keys.all, 'approvals'] as const,
-  timesheet: () => [...keys.all, 'timesheet'] as const,
+  timesheet: (userId?: UserId, periodStart?: DateKey) => [...keys.all, 'timesheet', userId ?? 'me', periodStart ?? 'current'] as const,
+  timesheets: () => [...keys.all, 'timesheet'] as const,
+  team: () => [...keys.all, 'team'] as const,
   teamPulse: () => [...keys.all, 'team-pulse'] as const,
 };
 
@@ -67,8 +70,14 @@ export const useSession = () => useQuery({ queryKey: keys.session(), queryFn: ap
 export const useAttendance = () => useQuery({ queryKey: keys.attendance(), queryFn: api.attendance });
 export const useTasks = () => useQuery({ queryKey: keys.tasks(), queryFn: api.tasks });
 export const useBalances = () => useQuery({ queryKey: keys.balances(), queryFn: api.balances });
-export const useTimeOffRequests = () => useQuery({ queryKey: keys.timeOff(), queryFn: api.timeOffRequests });
-export const useTimesheet = () => useQuery({ queryKey: keys.timesheet(), queryFn: api.timesheet });
+export const useMyRequests = () => useQuery({ queryKey: keys.requests(), queryFn: api.myRequests });
+export const useApproverPreview = () => useQuery({ queryKey: keys.approverPreview(), queryFn: api.approverPreview, staleTime: Infinity, retry: false });
+export const useTimesheet = (userId?: UserId, periodStart?: DateKey) =>
+  useQuery({
+    queryKey: keys.timesheet(userId, periodStart),
+    queryFn: () => api.timesheet({ ...(userId !== undefined ? { userId } : {}), ...(periodStart !== undefined ? { periodStart } : {}) }),
+  });
+export const useTeam = (enabled = true) => useQuery({ queryKey: keys.team(), queryFn: api.team, enabled, refetchInterval: 60_000 });
 
 export const useShifts = (from: DateKey, days: number) => {
   const to = addDays(from, days - 1);
@@ -89,7 +98,7 @@ export function useClock() {
     mutationFn: ({ type, key }: { type: AttendanceEventType; key: string }) => api.clock(type, key),
     onSuccess: (snapshot) => {
       qc.setQueryData<AttendanceSnapshot>(keys.attendance(), snapshot);
-      void qc.invalidateQueries({ queryKey: keys.timesheet() });
+      void qc.invalidateQueries({ queryKey: keys.timesheets() });
     },
   });
 }
@@ -126,7 +135,18 @@ export function useRequestTimeOff() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: TimeOffInput) => api.requestTimeOff(input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.timeOff() }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.requests() }),
+  });
+}
+
+export function useRequestOvertime() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: OvertimeInput) => api.requestOvertime(input),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.requests() });
+      void qc.invalidateQueries({ queryKey: keys.timesheets() });
+    },
   });
 }
 
@@ -138,15 +158,16 @@ export function useDecide() {
     onMutate: async ({ id }) => {
       await qc.cancelQueries({ queryKey: keys.approvals() });
       const previous = qc.getQueryData<Awaited<ReturnType<typeof api.approvals>>>(keys.approvals());
-      qc.setQueryData(keys.approvals(), previous?.filter((a) => a.id !== id));
+      qc.setQueryData(keys.approvals(), previous?.map((a) => (a.id === id ? { ...a, canDecide: false } : a)));
       return { previous };
     },
     onError: (_e, _v, ctx) => {
       if (ctx?.previous !== undefined) qc.setQueryData(keys.approvals(), ctx.previous);
     },
     onSettled: () => {
-      void qc.invalidateQueries({ queryKey: keys.approvals() });
-      void qc.invalidateQueries({ queryKey: keys.tasks() });
+      for (const key of [keys.approvals(), keys.tasks(), keys.team(), keys.timesheets(), keys.balances()]) {
+        void qc.invalidateQueries({ queryKey: key });
+      }
     },
   });
 }
@@ -154,8 +175,12 @@ export function useDecide() {
 export function useTimesheetAction() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ action, reason }: { action: TimesheetAction; reason?: string }) => api.timesheetAction(action, reason),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.timesheet() }),
+    mutationFn: ({ action, periodStart, reason }: { action: TimesheetAction; periodStart: DateKey; reason?: string }) =>
+      api.timesheetAction(action, periodStart, reason),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: keys.timesheets() });
+      void qc.invalidateQueries({ queryKey: keys.requests() });
+    },
   });
 }
 
