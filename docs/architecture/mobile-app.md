@@ -152,7 +152,7 @@ Looking *up* the reporting line requires organization scope, so a manager can't 
 - **Window size classes** (M3): compact < 600 ≤ medium < 840 ≤ expanded < 1200 ≤ large. On web and large Android screens the bottom bar becomes a **sidebar** (logo, org, role-filtered modules with approval badge, user presence), expanded or icon-only rail. iPad uses the native tab-bar sidebar (`sidebarAdaptable`).
 - **Desktop layouts:** centered max-width content. Home is two balanced columns; Approvals is a card grid; Team is a sortable data table; Timesheet and Time off use two columns.
 - **Customize** (More → Customize): theme (system/light/dark), 9 accent colors (default *NForce teal* from the logo, teal→navy brand gradient), density (comfortable/compact), platform look, desktop sidebar style, and the Home layout (reorder and show/hide widgets; widgets your role doesn't allow are never shown). Every accent is generated per flavor and scheme, and a test checks WCAG AA contrast for all 36 combinations.
-- **Brand:** the NForce logo (teal/navy cube) is the app icon, Android adaptive icon (foreground, background and monochrome), splash, favicon and sidebar mark. The source was a 451×484 JPEG, so a vector or ≥1024 px original should replace it before store submission.
+- **Brand:** the NForce logo (teal/navy cube with a white N) is the app icon, Android adaptive icon (foreground, background and monochrome), splash, favicon and sidebar mark. The 2048 px master is `design/brand/nforce-logo-master.jpg`, and `scripts/generate-brand-assets.py` regenerates every asset from it, cutting along the cube silhouette so the white N stays solid on any background. Brand gradient: #3B929C → #1E385B.
 
 ## 13. Known gaps (not implemented)
 

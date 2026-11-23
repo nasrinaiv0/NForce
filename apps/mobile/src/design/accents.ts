@@ -8,7 +8,7 @@ import type { ColorScheme, Flavor, Palette } from './tokens';
  */
 export const ACCENTS = {
   /** Brand: teal and navy from the NForce logo. */
-  nforce: { hue: 184, sat: 34 },
+  nforce: { hue: 186, sat: 45 },
   indigo: { hue: 231, sat: 100 },
   blue: { hue: 211, sat: 100 },
   teal: { hue: 178, sat: 80 },
@@ -91,8 +91,8 @@ export function accentTokens(accent: AccentId, flavor: Flavor, scheme: ColorSche
 
 /** Logo gradient (teal face → navy face) for brand moments. */
 const BRAND_HERO: Readonly<Record<ColorScheme, [string, string]>> = {
-  light: ['#3F8D91', '#1F3253'],
-  dark: ['#2C6A6E', '#18263F'],
+  light: ['#3B929C', '#1E385B'],
+  dark: ['#2E737B', '#172B47'],
 };
 
 /** Apply an accent to a base palette. `indigo` keeps the original hand-tuned palette. */

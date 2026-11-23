@@ -65,6 +65,17 @@ This log records meaningful project progress. Update it in the same pull request
 - **Known gaps/blockers:** Pay outputs are hours × multipliers, not money or statutory contributions. Shifts are attributed to their start date (other attribution rules not yet configurable). Timesheet and leave-balance SQL tables are not yet created. Auth and the Supabase client are still mock. The logo source is a 451×484 JPEG, so a vector or high-res original is needed for store assets. Holiday list includes only statutory dates fixed by law (proclaimed dates must be added per year).
 - **Next steps:** Supabase client + auth; timesheet and balance tables with RLS; payroll export using pay lines; configurable shift attribution and holiday-on-holiday rules; device QA and accessibility audit; EAS builds.
 
+## 2026-11-23 — High-resolution logo and brand asset pipeline
+
+- **PR / issue:** Not yet opened (branch `claude/vigilant-maxwell-mkbi61`).
+- **Phase/module:** Brand / design system.
+- **Status:** Implemented and render-verified.
+- **Summary:** Replaced the 451 px logo with the 2048 px master supplied by the product owner (`design/brand/nforce-logo-master.jpg`). Added `scripts/generate-brand-assets.py`, which regenerates the iOS icon, Android adaptive icon (foreground, background and monochrome), splash, favicon and in-app logo. **Correction to the previous entry:** the earlier assets removed the background with a flood fill, which leaked through the opening where the N's leg meets the cube's edge and left the N transparent in the splash, Android foreground and sidebar logo. The pipeline now cuts along the cube silhouette (convex hull, 4× supersampled), so the N is solid white. The brand gradient and `nforce` accent now match the logo exactly (#3B929C → #1E385B). The Android adaptive-icon background and splash backgrounds were updated in `app.json`. README screenshots were refreshed.
+- **Files/systems affected:** `apps/mobile/assets/**`, `apps/mobile/app.json`, `apps/mobile/src/design/accents.ts`, `scripts/generate-brand-assets.py`, `design/brand/nforce-logo-master.jpg`, `docs/architecture/mobile-app.md`, `docs/screenshots/*`.
+- **Validation performed:** Generated assets inspected visually on white and dark backgrounds (N solid, clean edges). `npx tsc --noEmit` and `npx eslint . --max-warnings 0` passed. `npx vitest run test/customization.test.ts` passed (38 tests, including WCAG AA contrast for the updated brand accent across all flavors and schemes). The web bundle was rebuilt and 20 screens rendered with Playwright with no page errors.
+- **Known gaps:** The master is a JPEG; a vector (SVG/PDF) original is still preferred for print and store marketing. Not checked on physical devices or launchers.
+- **Next steps:** Add the vector master when available and re-run the generator.
+
 ## Future entry template
 
 Copy and complete for each meaningful change:
