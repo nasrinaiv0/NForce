@@ -1,0 +1,22 @@
+{
+  "name": "nforce",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:db": "./scripts/test-db.sh",
+    "verify": "npm run typecheck && npm run lint && npm run test",
+    "start": "npm run start -w @nforce/mobile",
+    "web": "npm run web -w @nforce/mobile",
+    "build:web": "npm run export:web -w @nforce/mobile"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
