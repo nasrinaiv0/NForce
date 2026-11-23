@@ -50,3 +50,17 @@ Short, durable records of significant decisions. Status values: Proposed / Accep
 - **Context:** Night differential, overtime, rest-day and holiday premiums drive payroll. Rules differ by jurisdiction and contract.
 - **Decision:** Classify worked minutes per day into coded lines with multipliers from a versionable `PayPolicy` (PH Labor Code defaults, minimum OT block). Shifts are attributed to their start date. Payroll systems apply rates. OT is paid only when an approved OT request covers it.
 - **Consequences:** Transparent, testable hours for employees and payroll. Money calculations, statutory contributions and alternative attribution rules remain payroll-provider responsibilities and must be validated by professionals.
+
+## ADR-008 — Organization owner, distinct department roles, no privilege escalation
+
+- **Status:** Accepted (2026-11-23)
+- **Context:** HR, Payroll, Operations and IT need different access, and the organization needs one superior role that can manage everything and approve anything.
+- **Decision:** Add an `owner` template holding every permission organization-wide, plus `org.manage` (approval override) and `people.offboard`. Narrow each department template to its job (see the mobile architecture §13). A role may be assigned only by someone who already holds all of its permissions at least as widely. No one may change their own role, self-approve, or remove the last owner. Enforced in core, the app backend and SQL RPCs.
+- **Consequences:** Departments are least-privilege by default, and the owner can resolve any blockage. Owner actions are powerful, so every override and member change is audited. Organizations should keep at least two owners for resilience.
+
+## ADR-009 — Reports are aggregates of one per-person-day record
+
+- **Status:** Accepted (2026-11-23)
+- **Context:** Personal, team and executive reports must reconcile, and executives should not see individual attendance by default.
+- **Decision:** Every attendance metric is computed from one `DayRecord` per person per day (`@nforce/core` `reports/attendance.ts`). Reports cover completed days through yesterday. Person-level rows are returned only when the viewer may see each person, and SQL aggregate reports fold small groups (<3 people) into "Other".
+- **Consequences:** Numbers match across levels and privacy is protected by construction. Live "today" status lives in the Team view, not in reports.

@@ -15,7 +15,7 @@ import { EmptyState, ErrorState, LoadingBlock, Screen } from '@/components/Scree
 import { Card, ListSection, SectionHeader } from '@/components/Surface';
 import { Text } from '@/components/Text';
 import { Touchable } from '@/components/Touchable';
-import { errorMessage, useAttendanceReport } from '@/data/queries';
+import { errorMessage, useAttendanceReport, useSession } from '@/data/queries';
 import type { AttendanceFlag, AttendanceReport, ReportScope } from '@/data/types';
 import { useTheme } from '@/design/theme';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -30,7 +30,11 @@ export default function AttendanceScreen() {
   const t = useTheme();
   const i18n = useI18n();
   const { isDesktop } = useResponsive();
-  const [scope, setScope] = useState<ReportScope>('me');
+  const session = useSession();
+  // Open on the widest view the person has: org for owners/executives, team for leads.
+  const defaultScope: ReportScope = session.data?.reports.organization === true ? 'org' : session.data?.modules.includes('team') === true ? 'team' : 'me';
+  const [picked, setScope] = useState<ReportScope | undefined>(undefined);
+  const scope = picked ?? defaultScope;
   const [weeks, setWeeks] = useState(4);
   const report = useAttendanceReport(scope, weeks);
   const r = report.data;

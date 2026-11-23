@@ -76,6 +76,22 @@ This log records meaningful project progress. Update it in the same pull request
 - **Known gaps:** The master is a JPEG; a vector (SVG/PDF) original is still preferred for print and store marketing. Not checked on physical devices or launchers.
 - **Next steps:** Add the vector master when available and re-run the generator.
 
+## 2026-11-23 — Attendance & executive reports, all planned modules, owner access model, compact desktop Home
+
+- **PR / issue:** Not yet opened (branch `claude/vigilant-maxwell-mkbi61`).
+- **Phase/module:** Phases 3–6 (Work Center/Operations reporting, HR & Payroll, CRM, enterprise analytics/admin) and the access model.
+- **Status:** Implemented. Unit-, SQL- and render-verified. Not verified on devices.
+- **Summary:**
+  - **Attendance for all** (self/team/org) and an **executive report** (KPIs with deltas, trends, labor mix, team comparison, approval SLA, leave utilization, payroll readiness, risks, CSV). Core: `reports/attendance.ts`, `reports/approvals.ts`, `export/csv.ts` (formula-injection safe). The demo backend now has 9 weeks of history.
+  - **Modules replacing placeholders:** People (directory, profiles, confidential fields for self/HR only), Payroll (register by pay code with approved-OT-only payment, blockers, CSV, lock), Administration (permission matrix, members, audit log, holidays, pay rules), CRM (pipeline, weighted forecast), Notifications inbox, plus a notification bell.
+  - **Access model v2:** Organization **Owner** with every permission and approval override; distinct HR, Payroll, Operations and IT admin templates; role assignment without privilege escalation; add/edit/offboard employees with report reassignment and last-owner protection. New demo person: Sofia Reyes (Owner).
+  - **Desktop Home** redone as one compact, professional column (header + quick actions, summary strip, dense panels in the user's order).
+  - **SQL:** migration 3 adds timesheets (immutable once locked), the leave ledger and balance view, payroll periods and the lock RPC, trigger-written notifications, CRM tables with the `move_deal` rules, and the aggregate-only `report_attendance_summary` (groups under 3 folded). Migration 4 adds the owner role and new permissions (role templates re-synced), request payload validation, the owner override in `decide_request`, and `assign_role` / `add_member` / `offboard_member`.
+- **Corrections found by tests during this work:** leave requests without a leave type or day count could be submitted and could not post to the ledger, so payload validation was added in SQL. A local-variable shadowing bug in the backend report functions was fixed. Demo absences were too rare to be realistic (attendance showed 100%), so their frequency was tuned.
+- **Validation performed (2026-11-23):** `npm run typecheck` passed; `npm run lint` passed (0 warnings); core **120 tests** passed (lines 99.8%, statements 99.0%, branches 91.9%, functions 98.0%); app **80 tests** passed; `./scripts/test-db.sh` on PostgreSQL 16.15 applied all 4 migrations and **88 SQL assertions** passed; the web bundle was built, 15 new screens were rendered with Playwright with no page errors, and scripted flows passed (owner final approval 11 → 10; HR offered only Staff/HR roles, added an employee, offboarded an employee; HR has no Payroll/Approvals navigation).
+- **Known gaps:** Authentication and the Supabase client are still mock. No CRM editing UI. Employee invitations do not send email. Not tested on devices. Pay rules must be validated by payroll/legal.
+- **Next steps:** Supabase client + auth; invitation flow; CRM editing for a sales role; device QA and accessibility audit; EAS builds.
+
 ## Future entry template
 
 Copy and complete for each meaningful change:

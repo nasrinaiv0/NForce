@@ -349,11 +349,11 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       if (d < lastWeek && !p.restDays.includes(isoWeekday(d)) && DEMO_HOLIDAYS[d]?.kind !== 'regular') {
         const h = Math.abs(hash(`${key}hist`));
         const weeksAgo = Math.floor((Date.parse(lastWeek) - Date.parse(d)) / (7 * 86_400_000));
-        if ((p.role === 'staff' || p.role === 'supervisor') && h % 31 === 0) {
+        if ((p.role === 'staff' || p.role === 'supervisor') && h % 19 === 0) {
           onLeave.add(key); // sick leave
           continue;
         }
-        if (p.role === 'staff' && h % 53 === 7) continue; // unexcused absence
+        if (p.role === 'staff' && h % 29 === 7) continue; // unexcused absence
         const window = shiftWindow(p, d);
         const lateEvery = weeksAgo >= 5 ? 9 : weeksAgo >= 3 ? 14 : 23;
         const clockIn = h % lateEvery === 0 ? plusMinutes(window.start, 8 + (h % 27)) : plusMinutes(window.start, jitterIn);

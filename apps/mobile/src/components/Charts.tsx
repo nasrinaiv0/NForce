@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
   heatGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   heatCell: { width: `${100 / 7}%`, aspectRatio: 1.6, alignItems: 'center', justifyContent: 'center', padding: 2 },
   heatSquare: { width: '100%', height: '100%', borderRadius: 4 },
-  kpi: { padding: 14, gap: 2, flexGrow: 1, flexBasis: '45%', minWidth: 150 },
+  kpi: { padding: 14, gap: 2, flexGrow: 1, flexBasis: '22%', minWidth: 160 },
   delta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   toggle: { width: 28, height: 22, borderRadius: 6, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   tableRow: { flexDirection: 'row', paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, gap: 8 },

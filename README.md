@@ -2,7 +2,7 @@
 
 NForce is an enterprise workforce platform with role-aware workspaces: attendance, schedules, timesheets, time off, a Work Center and approvals, with HR, payroll integrations, CRM and administration on the roadmap.
 
-> **Current status (2026-11-23):** Phase 1 foundation is implemented: a native iOS and Android app (Expo / React Native), a fully tested shared domain core, and a PostgreSQL/Supabase schema with row-level security. The app runs against an in-memory backend that enforces the real business rules. Authentication and the live Supabase client are not built yet. See the [progress log](docs/PROGRESS_LOG.md) for verified evidence and known gaps.
+> **Current status (2026-11-23):** All modules in the architecture are implemented against an in-memory backend (attendance, scheduling, timesheets, time off, approvals, Work Center, people/HR, payroll preparation, CRM, reports, administration, notifications), with SQL migrations and tests for the data layer. Phase 1 foundation is implemented: a native iOS and Android app (Expo / React Native), a fully tested shared domain core, and a PostgreSQL/Supabase schema with row-level security. The app runs against an in-memory backend that enforces the real business rules. Authentication and the live Supabase client are not built yet. See the [progress log](docs/PROGRESS_LOG.md) for verified evidence and known gaps.
 
 ## What's inside
 
@@ -25,7 +25,7 @@ npm run test:db      # database migrations + RLS tests (requires PostgreSQL 15+ 
 
 Native features (SF Symbols, native tabs, haptics) need a development build: `npx expo run:ios`, `npx expo run:android`, or EAS Build. They are not available in Expo Go.
 
-In the app, open **More → Workspace profile (demo)** to switch between people in a real reporting hierarchy: Staff (Jordan) → Supervisor (Maya) → Manager (Elena) → Executive (Rafael), plus HR, Payroll, Operations and Admin. Navigation, home widgets, what you can see and what you can approve all change, because the (mock) server enforces permissions. **More → Customize** sets theme, accent color, density, platform look (iOS/Android), sidebar style and the Home layout. Widen the browser past 600 px to get the desktop sidebar layout.
+In the app, open **More → Workspace profile (demo)** to switch between people in a real reporting hierarchy: Staff (Jordan) → Supervisor (Maya) → Manager (Elena) → Executive (Rafael) → **Owner (Sofia, full organization access)**, plus HR (Hana), Payroll (Paulo), Operations (Ivy) and IT admin (Alex), each with different access. Navigation, home widgets, what you can see and what you can approve all change, because the (mock) server enforces permissions. **More → Customize** sets theme, accent color, density, platform look (iOS/Android), sidebar style and the Home layout. Widen the browser past 600 px to get the desktop sidebar layout.
 
 ## Screenshots
 
@@ -38,6 +38,10 @@ In the app, open **More → Workspace profile (demo)** to switch between people 
 | ![Home](docs/screenshots/3-desktop-home.jpg) | ![Team table](docs/screenshots/4-desktop-team-table.jpg) |
 | ![Approvals](docs/screenshots/5-desktop-approvals.jpg) | ![Timesheet with pay categories](docs/screenshots/6-desktop-timesheet-pay.jpg) |
 | ![Customize, dark violet](docs/screenshots/7-desktop-customize-dark-violet.jpg) | ![Icon rail, compact, orange](docs/screenshots/8-desktop-rail-compact-orange.jpg) |
+| ![Executive report](docs/screenshots/9-desktop-executive-reports.jpg) | ![Attendance](docs/screenshots/10-desktop-attendance.jpg) |
+| ![Payroll register](docs/screenshots/11-desktop-payroll.jpg) | ![Permission matrix](docs/screenshots/12-desktop-permission-matrix.jpg) |
+| ![Profile seen by HR](docs/screenshots/13-desktop-profile-hr.jpg) | ![CRM pipeline](docs/screenshots/14-desktop-crm.jpg) |
+| ![Home, dark](docs/screenshots/15-desktop-home-dark.jpg) | ![Phone: home, executive report, attendance](docs/screenshots/16-phone-reports-attendance.jpg) |
 
 Rendered from the production web bundle with Playwright, with mock data. Not yet captured on physical devices.
 

@@ -1,7 +1,7 @@
 # NForce Mobile App Architecture (iOS & Android)
 
 **Status:** Implemented (Phase 1 foundation + Phase 2 workforce core) — runs against an in-memory backend  
-**Last updated:** 2026-11-23 (rev. 2)  
+**Last updated:** 2026-11-23 (rev. 3)  
 **Code:** [`apps/mobile`](../../apps/mobile), [`packages/core`](../../packages/core), [`supabase`](../../supabase)
 
 This document describes what is **implemented** in the repository today. Items marked *Planned* are not built yet.
@@ -154,12 +154,37 @@ Looking *up* the reporting line requires organization scope, so a manager can't 
 - **Customize** (More → Customize): theme (system/light/dark), 9 accent colors (default *NForce teal* from the logo, teal→navy brand gradient), density (comfortable/compact), platform look, desktop sidebar style, and the Home layout (reorder and show/hide widgets; widgets your role doesn't allow are never shown). Every accent is generated per flavor and scheme, and a test checks WCAG AA contrast for all 36 combinations.
 - **Brand:** the NForce logo (teal/navy cube with a white N) is the app icon, Android adaptive icon (foreground, background and monochrome), splash, favicon and sidebar mark. The 2048 px master is `design/brand/nforce-logo-master.jpg`, and `scripts/generate-brand-assets.py` regenerates every asset from it, cutting along the cube silhouette so the white N stays solid on any background. Brand gradient: #3B929C → #1E385B.
 
-## 13. Known gaps (not implemented)
+## 13. Access model: departments and the organization owner
+
+Role templates are defined once in `@nforce/core` (`access/permissions.ts`), seeded into SQL, and checked for drift by a test. Each department gets only what its job needs:
+
+| Role | Can | Cannot |
+| --- | --- | --- |
+| **Owner** (organization) | Everything, organization-wide: add, edit and offboard employees; assign any role; approve **any** request at any stage (override, audited); payroll, CRM, admin, reports | Approve their own requests; demote or offboard themselves; remove the last owner |
+| **Executive** | Organization reports (aggregates), CRM pipeline (read), final approval of managers' requests | Person-level attendance, employee edits, payroll |
+| **Manager** | Department attendance, schedules, approvals (final), team reports | Employee records, payroll |
+| **Supervisor** | Team attendance, review step of approvals, team reports | Final approval, employee records, payroll |
+| **HR** | Employee records incl. confidential fields; add, edit and offboard employees; org-wide attendance and time-off oversight | Approvals, payroll, granting roles they don't hold |
+| **Payroll** | Timesheets, period locking, adjustments, payroll register and export; reads punches | Employee edits, confidential HR fields, approvals |
+| **Operations** | Schedules, staffing, org-wide attendance, work assignment | Employee records, payroll, approvals |
+| **IT admin** (`org_admin`) | Workspace settings, roles and audit log | Business data (attendance, payroll, HR records) |
+| **Staff** | Their own attendance, timesheets, requests, work and directory | Anything about other people |
+
+**No privilege escalation:** a role can be assigned only by someone who already holds every one of its permissions at least as widely (`canAssignRole`, SQL `assign_role`). Nobody changes their own role. **Offboarding** reassigns direct reports to the departing person's manager and protects the last owner (`planOffboarding`, SQL `offboard_member`). All of these are tested in core, in the app's backend tests, and in SQL.
+
+## 14. Attendance, reports and the remaining modules
+
+- **Attendance** (everyone): a personal history for all; team and department views for supervisors, managers, HR, payroll and operations; organization-wide for owners and executives. Shows KPIs vs the previous period (attendance, punctuality, absences, late arrivals, worked hours, OT, night differential, missed punches), an 8-week trend, a daily heatmap, by-team bars, a sortable per-person table, an exceptions list and CSV export.
+- **Executive report**: headcount, attendance/punctuality/absenteeism with deltas, OT and ND hours, paid-hour equivalent, weekly attendance and OT trends, labor mix by pay code, team comparison against a 95% target, approval turnaround (median/p90, overdue), leave utilization, payroll readiness, an automatic "Needs attention" list, and CSV export. Executives get **aggregates only**; person-level data appears only within a viewer's access scope. In SQL, `report_attendance_summary()` folds groups under 3 people into "Other".
+- **People** (directory, profiles, reporting line; confidential fields only for the person and HR), **Payroll** (register by pay code, blockers, CSV export, period lock), **Administration** (permission matrix, members, audit log, holiday calendar, pay rules), **CRM** (pipeline, weighted forecast, stage board), **Notifications** (in-app inbox; no confidential data in previews).
+- **Desktop Home** is a single compact column: header with quick actions, a one-line summary strip, then dense panels in the user's chosen order.
+
+## 15. Known gaps (not implemented)
 
 - Real authentication and the Supabase-backed `NForceApi` (mock only today).
 - Offline outbox for clock events (idempotency keys are ready for it).
 - Push notifications, widgets/Live Activities, Wear OS / watchOS.
 - Native-device verification: the UI was verified with typecheck, lint and rendered web previews of both flavors. It has **not** yet been run on physical iOS/Android devices or simulators in CI.
-- Screens for People, Payroll, CRM, Reports and Admin (roadmap placeholders with permissions wired).
-- Timesheet and leave-balance tables in SQL (approval requests, holidays and the reporting line are implemented in migration 2).
+- CRM editing UI (the SQL `move_deal` rules exist; no demo role holds `crm.manage` except the owner).
+- Employee invitations: the backend `add_member` attaches an existing account; sending invitation emails is not built.
 - Pay amounts/payroll export: classification produces hours and multipliers only.

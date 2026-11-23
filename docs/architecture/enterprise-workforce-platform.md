@@ -247,8 +247,11 @@ Confirm before implementation: initial customer scope (internal, multi-tenant Sa
 | Desktop mode (sidebar, multi-column, data tables) and user customization (theme, accent, density, home layout) | Implemented in app | `apps/mobile/src/components/Sidebar.tsx`, `apps/mobile/src/app/(tabs)/more/customize.tsx` |
 | Leave vs day-off rules | Implemented in core; SQL tables *Planned (Phase 2)* | `packages/core/src/leave` |
 | Mobile app: Home, Work, Clock, Schedule, More, Approvals, Timesheets, Time off | Implemented against an in-memory backend | `apps/mobile` |
+| Organization owner + distinct department roles; role assignment without escalation; add/edit/offboard employees | Implemented (core + SQL + app) and tested | `packages/core/src/access`, `packages/core/src/people`, `supabase/migrations/20261126000000_access_model_owner.sql` |
+| Attendance analytics (personal/team/org) and executive reporting with CSV export | Implemented (core + app); SQL aggregate summary | `packages/core/src/reports`, `apps/mobile/src/app/(tabs)/more/{attendance,reports}.tsx` |
+| Timesheets, leave ledger, payroll periods, notifications, CRM tables in SQL | Implemented with RLS and tests | `supabase/migrations/20261125000000_workforce_records_reports.sql` |
+| People, Payroll, Administration, CRM, Notifications screens | Implemented against the in-memory backend | `apps/mobile/src/app/(tabs)/more/` |
 | Real authentication / Supabase client | *Planned* | — |
-| People, Payroll, CRM, Reports, Admin screens | *Planned* (navigation and permissions wired) | `apps/mobile/src/app/(tabs)/more/module` |
 
 Decisions are recorded in [Architecture Decision Records](./decisions.md). Award and quality targets are in the [Award-Readiness Guide](../product/award-readiness.md).
 

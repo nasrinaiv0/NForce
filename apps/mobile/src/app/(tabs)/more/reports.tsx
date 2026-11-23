@@ -229,9 +229,9 @@ function riskText(k: ExecutiveReport['risks'][number], i18n: I18n): string {
     case 'late_trend':
       return i18n.t('reports.risk.late_trend', { value: i18n.number(Math.abs(k.value) * 100, { maximumFractionDigits: 1 }) });
     case 'approvals_overdue':
-      return i18n.t('reports.risk.approvals_overdue', { count: k.value });
+      return i18n.plural('reports.risk.approvals_overdue', k.value);
     case 'missed_punches':
-      return i18n.t('reports.risk.missed_punches', { count: k.value });
+      return i18n.plural('reports.risk.missed_punches', k.value);
   }
 }
 
