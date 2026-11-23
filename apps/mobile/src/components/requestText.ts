@@ -1,6 +1,6 @@
 import { formatDuration } from '@nforce/core';
 
-import type { ApprovalItem } from '@/data/types';
+import type { ApprovalItem, MyRequest } from '@/data/types';
 import type { I18n } from '@/i18n';
 
 /** Localized headline + detail for each request kind. */
@@ -24,3 +24,21 @@ export function describeRequest(item: ApprovalItem, i18n: I18n): { summary: stri
   }
 }
 
+
+/** Title, subtitle and start date of one of the viewer's own requests. */
+export function requestTitle(r: MyRequest, i18n: I18n): { title: string; subtitle: string; start: string } {
+  const p = r.payload;
+  switch (p.kind) {
+    case 'leave':
+    case 'day_off': {
+      const dates = p.start === p.end ? i18n.date(p.start) : `${i18n.date(p.start)} – ${i18n.date(p.end)}`;
+      return { title: p.kind === 'leave' ? p.leaveType : i18n.t('timeoff.kind.day_off'), subtitle: `${dates} · ${i18n.plural('timeoff.days', p.days)}`, start: p.start };
+    }
+    case 'overtime':
+      return { title: i18n.t('approvals.kind.overtime'), subtitle: `${i18n.date(p.date)} · ${formatDuration(p.minutes)}`, start: p.date };
+    case 'timesheet':
+      return { title: i18n.t('approvals.kind.timesheet'), subtitle: i18n.t('approvals.weekOf', { date: i18n.date(p.periodStart) }), start: p.periodStart };
+    case 'correction':
+      return { title: i18n.t('approvals.kind.correction'), subtitle: i18n.date(p.date), start: p.date };
+  }
+}

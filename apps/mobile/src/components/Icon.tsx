@@ -43,6 +43,7 @@ export const ICONS = {
   hand: { ios: 'hand.tap', android: 'vibration' },
   motion: { ios: 'figure.walk.motion', android: 'animation' },
   phone: { ios: 'iphone', android: 'smartphone' },
+  mail: { ios: 'envelope', android: 'mail' },
   person: { ios: 'person.crop.circle', android: 'account_circle' },
   info: { ios: 'info.circle', android: 'info' },
   calendarCheck: { ios: 'calendar.badge.checkmark', android: 'event_available' },

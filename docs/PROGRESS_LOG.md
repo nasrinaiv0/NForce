@@ -76,6 +76,36 @@ This log records meaningful project progress. Update it in the same pull request
 - **Known gaps:** The master is a JPEG; a vector (SVG/PDF) original is still preferred for print and store marketing. Not checked on physical devices or launchers.
 - **Next steps:** Add the vector master when available and re-run the generator.
 
+## 2026-11-23 — Timesheet table, schedule views, employee profile, live-app database layer
+
+- **PR / issue:** #2.
+- **Status:** Implemented. UI, backend and SQL tested. Not yet connected to the Supabase project (see Blockers).
+- **Summary:**
+  - **Timesheet** is now a table: in/out, breaks, worked, regular, OT and approved OT, night differential, paid-hour equivalent, and a totals row. Days with unfiled overtime are highlighted and offer "File OT".
+  - **Schedule** now has three views:
+    - Day: the existing detail view.
+    - Week: a table of your own week. People who can see others' schedules can switch to a team roster (people × days, with leave and holidays).
+    - Month: a calendar.
+    - New `teamSchedule` endpoint, limited to people the viewer may see.
+  - **Employee profile** redesigned. On desktop, profile and details are on the left, detailed information on the right, direct reports below. New employee information, each part behind its own access rule:
+    - leave credits (available, used, pending) and recent leave requests;
+    - 30-day attendance and overtime this month;
+    - confidential employment details, personal and emergency contact, and masked government IDs (person, HR and owners only).
+  - **Migration 6 (`20261128000000_live_app_backend.sql`)** adds what the live app needs:
+    - sign-up profiles, and `create_organization` (the creator becomes owner; leave types, balances and Philippine holidays are seeded);
+    - `add_member_by_email`, `update_member_details`, and per-member work patterns with `set_member_schedule`;
+    - Work Center tasks with row-level security;
+    - `my_workspaces` and `org_directory`;
+    - approved corrections now write the corrected clock-out.
+- **Also fixed:** a test bug where "anonymous" SQL checks still carried the previous user's ID.
+- **Validation performed (2026-11-23):**
+  - `npm run typecheck` and `npm run lint` passed.
+  - Core **147 tests** passed; app **132 tests** passed (7 new profile-access tests).
+  - `./scripts/test-db.sh` on PostgreSQL 16.15 applied 6 migrations; **162 SQL assertions** passed (31 new).
+  - Timesheet, schedule (week, roster, month) and profile screens rendered in Chromium at desktop and phone sizes with no page errors.
+- **Blockers:** Supabase project `jnhvceaotcphzvmwptdf` is not visible to the connected Supabase account. The access token saved for the Management API is rejected ("JWT could not be decoded"), so it is not a valid personal access token. Migrations are not applied there yet, and the app is not yet wired to it.
+- **Next steps:** With a valid token or connector access: apply migrations 1–6 to the project, read its publishable key, add Supabase Auth sign-in and the live data client, and verify end to end.
+
 ## 2026-11-23 — Hierarchy and organization access hardening
 
 - **PR / issue:** #2.

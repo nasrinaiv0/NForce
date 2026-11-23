@@ -1,4 +1,4 @@
-import { formatDuration, queryList, type ApprovalStatus, type SortSpec } from '@nforce/core';
+import { queryList, type ApprovalStatus, type SortSpec } from '@nforce/core';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
@@ -11,31 +11,14 @@ import { ErrorState, LoadingBlock, Screen } from '@/components/Screen';
 import { Card, ListSection } from '@/components/Surface';
 import { Text } from '@/components/Text';
 import { errorMessage, keys, queryClient, useApproverPreview, useBalances, useMyRequests } from '@/data/queries';
-import type { MyRequest } from '@/data/types';
 import { useTheme } from '@/design/theme';
 import { useResponsive } from '@/hooks/useResponsive';
-import { useI18n, type I18n } from '@/i18n';
+import { useI18n } from '@/i18n';
+import { requestTitle } from '@/components/requestText';
 
 const STATUS_TONE: Readonly<Record<ApprovalStatus, Tone>> = { pending: 'warning', approved: 'success', returned: 'danger', cancelled: 'neutral' };
 type StatusFilter = 'all' | ApprovalStatus;
 type SortKey = 'submitted' | 'starts';
-
-function requestTitle(r: MyRequest, i18n: I18n): { title: string; subtitle: string; start: string } {
-  const p = r.payload;
-  switch (p.kind) {
-    case 'leave':
-    case 'day_off': {
-      const dates = p.start === p.end ? i18n.date(p.start) : `${i18n.date(p.start)} – ${i18n.date(p.end)}`;
-      return { title: p.kind === 'leave' ? p.leaveType : i18n.t('timeoff.kind.day_off'), subtitle: `${dates} · ${i18n.plural('timeoff.days', p.days)}`, start: p.start };
-    }
-    case 'overtime':
-      return { title: i18n.t('approvals.kind.overtime'), subtitle: `${i18n.date(p.date)} · ${formatDuration(p.minutes)}`, start: p.date };
-    case 'timesheet':
-      return { title: i18n.t('approvals.kind.timesheet'), subtitle: i18n.t('approvals.weekOf', { date: i18n.date(p.periodStart) }), start: p.periodStart };
-    case 'correction':
-      return { title: i18n.t('approvals.kind.correction'), subtitle: i18n.date(p.date), start: p.date };
-  }
-}
 
 export default function TimeOffScreen() {
   const t = useTheme();

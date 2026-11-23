@@ -189,7 +189,17 @@ Screens only offer what the backend will accept: each profile carries the viewer
 - **People** (directory, profiles, reporting line; confidential fields only for the person and HR), **Payroll** (register by pay code, blockers, CSV export, period lock), **Administration** (permission matrix, members, audit log, holiday calendar, pay rules), **CRM** (pipeline, weighted forecast, stage board), **Notifications** (in-app inbox; no confidential data in previews).
 - **Desktop Home** is a single compact column: header with quick actions, a one-line summary strip, then dense panels in the user's chosen order.
 
-## 15. Known gaps (not implemented)
+## 15. Timesheets, schedules and employee profiles
+
+- **Timesheet table:** one row per worked day with clock-in, clock-out, breaks, worked, regular, overtime (worked and approved), night differential and paid-hour equivalent, plus a totals row. Days with unapproved overtime are highlighted and offer "File OT". The table scrolls sideways on phones instead of squeezing numbers (`GridTable`, `TimesheetTable`).
+- **Schedule:** Day (details and teammates), Week (table of your week; people with schedule access to others can switch to a **team roster**: people × days with shift times, leave, holidays, rest days and weekly hours) and Month (calendar; tap a day to open it). The roster comes from `teamSchedule`, which returns only people the viewer may see.
+- **Employee profile** (desktop: profile and details on the left, detailed information on the right, direct reports below; phones stack the same sections). Each block has its own access rule:
+  - Everyone in the directory: name, title, role, department, team, work email, location, shift, rest days, reporting line and direct reports.
+  - The person and anyone with time-off access to them (their managers, HR, owners): **leave credits** (available, entitled, used, pending) and recent leave requests.
+  - The person and anyone with attendance access: **attendance for the last 30 days** (attendance rate, punctuality, late days, absences, hours). With timesheet access: overtime this month (approved and pending).
+  - The person, HR and owners only: **confidential** employment details (employee ID, type, hire date, tenure, regularization, work arrangement, pay grade), personal and emergency contact, and government IDs (SSS, PhilHealth, Pag-IBIG, TIN), always masked.
+
+## 16. Known gaps (not implemented)
 
 - Real authentication and the Supabase-backed `NForceApi` (mock only today).
 - Offline outbox for clock events (idempotency keys are ready for it).

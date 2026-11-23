@@ -252,7 +252,9 @@ Confirm before implementation: initial customer scope (internal, multi-tenant Sa
 | Timesheets, leave ledger, payroll periods, notifications, CRM tables in SQL | Implemented with RLS and tests | `supabase/migrations/20261125000000_workforce_records_reports.sql` |
 | People, Payroll, Administration, CRM, Notifications screens | Implemented against the in-memory backend | `apps/mobile/src/app/(tabs)/more/` |
 | Hierarchy hardening: approvals scoped to the reporting line, approver re-check, owner fallback, re-routing on organization changes, protected owners, no demotion of more-privileged people, `update_member` RPC | Implemented (core + SQL + app) and tested | `packages/core/src/access/members.ts`, `packages/core/src/approvals/chain.ts`, `supabase/migrations/20261127000000_access_hierarchy_hardening.sql` |
-| Real authentication / Supabase client | *Planned* | — |
+| Live-app backend: sign-up profiles, `create_organization`, add members by email, member details and work patterns, Work Center tasks, `org_directory`/`my_workspaces`, corrections write the clock-out | Implemented in SQL and tested locally; not yet applied to the Supabase project | `supabase/migrations/20261128000000_live_app_backend.sql` |
+| Timesheet table, schedule week table / team roster / month calendar, employee profile with leave credits, attendance and confidential details | Implemented against the in-memory backend and tested | `apps/mobile/src/components/{GridTable,TimesheetTable}.tsx`, `apps/mobile/src/app/(tabs)/schedule/index.tsx`, `apps/mobile/src/app/(tabs)/more/person/[id].tsx` |
+| Real authentication / Supabase client | *Planned* (blocked: Supabase project access) | — |
 
 Decisions are recorded in [Architecture Decision Records](./decisions.md). Award and quality targets are in the [Award-Readiness Guide](../product/award-readiness.md).
 

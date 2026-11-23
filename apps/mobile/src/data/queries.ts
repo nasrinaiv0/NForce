@@ -23,6 +23,7 @@ export const keys = {
   session: () => [...keys.all, 'session'] as const,
   attendance: () => [...keys.all, 'attendance'] as const,
   shifts: (from: DateKey, to: DateKey) => [...keys.all, 'shifts', from, to] as const,
+  roster: (from: DateKey, to: DateKey) => [...keys.all, 'roster', from, to] as const,
   tasks: () => [...keys.all, 'tasks'] as const,
   balances: () => [...keys.all, 'balances'] as const,
   requests: () => [...keys.all, 'my-requests'] as const,
@@ -127,6 +128,10 @@ export function useMarkNotificationsRead() {
 
 export const useTeam = (enabled = true) => useQuery({ queryKey: keys.team(), queryFn: api.team, enabled, refetchInterval: 60_000 });
 
+export const useTeamSchedule = (from: DateKey, days: number, enabled = true) => {
+  const to = addDays(from, days - 1);
+  return useQuery({ queryKey: keys.roster(from, to), queryFn: () => api.teamSchedule(from, to), staleTime: 5 * 60_000, enabled });
+};
 export const useShifts = (from: DateKey, days: number) => {
   const to = addDays(from, days - 1);
   return useQuery({ queryKey: keys.shifts(from, to), queryFn: () => api.shifts(from, to), staleTime: 5 * 60_000 });

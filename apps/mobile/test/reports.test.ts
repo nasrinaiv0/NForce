@@ -97,7 +97,7 @@ describe('people, payroll, admin, CRM, notifications', () => {
     expect((await api.profile(UserId('u_priya'))).sensitive).toBeDefined();
     as('manager');
     const elena = await api.profile(UserId('u_elena'));
-    expect(elena.directReports.map((p) => p.name)).toEqual(expect.arrayContaining(['Maya Santos', 'Kenji Watanabe']));
+    expect(elena.directReports.map((r) => r.person.name)).toEqual(expect.arrayContaining(['Maya Santos', 'Kenji Watanabe']));
     expect(elena.chain.map((p) => p.name)).toEqual(['Rafael Mendoza', 'Sofia Reyes']);
   });
 

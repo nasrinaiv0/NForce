@@ -42,6 +42,8 @@ In the app, open **More → Workspace profile (demo)** to switch between people 
 | ![Payroll register](docs/screenshots/11-desktop-payroll.jpg) | ![Permission matrix](docs/screenshots/12-desktop-permission-matrix.jpg) |
 | ![Profile seen by HR](docs/screenshots/13-desktop-profile-hr.jpg) | ![CRM pipeline](docs/screenshots/14-desktop-crm.jpg) |
 | ![Home, dark](docs/screenshots/15-desktop-home-dark.jpg) | ![Phone: home, executive report, attendance](docs/screenshots/16-phone-reports-attendance.jpg) |
+| ![Timesheet table](docs/screenshots/17-desktop-timesheet-table.jpg) | ![Team roster (week)](docs/screenshots/18-desktop-team-roster.jpg) |
+| ![Schedule month calendar](docs/screenshots/19-desktop-schedule-month.jpg) | ![Employee profile](docs/screenshots/20-desktop-employee-profile.jpg) |
 
 Rendered from the production web bundle with Playwright, with mock data. Not yet captured on physical devices.
 

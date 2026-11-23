@@ -65,6 +65,8 @@ import {
 
 import {
   ApiError,
+  type RosterCell,
+  type RosterRow,
   type AdminOverview,
   type AttendanceFlag,
   type AttendanceReport,
@@ -590,12 +592,16 @@ export function createMockApi(options: MockApiOptions): NForceApi {
     const sessions = sessionsIn(p, start, addDays(start, 6));
     return classifySessions(sessions, payCtx(p)).map((day) => {
       const rs = overtimeRequests(p, day.date);
-      const breakMinutes = sessions
-        .filter((s: WorkSession) => s.workDate === day.date)
-        .reduce((n, s) => n + Math.round(sessionTotals(s, now()).breakMs / 60_000), 0);
+      const daySessions = sessions.filter((s: WorkSession) => s.workDate === day.date);
+      const breakMinutes = daySessions.reduce((n, s) => n + Math.round(sessionTotals(s, now()).breakMs / 60_000), 0);
       const holiday = DEMO_HOLIDAYS[day.date];
+      const firstIn = daySessions.map((s) => s.clockIn).sort()[0];
+      const outs = daySessions.map((s) => s.clockOut);
+      const lastOut = outs.includes(undefined) ? undefined : (outs as string[]).sort().at(-1);
       return {
         ...day,
+        ...(firstIn !== undefined ? { firstIn } : {}),
+        ...(lastOut !== undefined ? { lastOut } : {}),
         overtime: authorizeOvertime(day, otMinutes(rs, 'approved')),
         pendingOvertimeMinutes: otMinutes(rs, 'pending'),
         breakMinutes,
@@ -899,6 +905,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
             offboard: authorize(s, 'people.offboard', { organizationId: ORG }, now()).allowed,
             assignableRoles: assignableRoles(s, now()),
             approveAnything: isOwner(me),
+            teamSchedule: grantScope(s, 'schedule.view', now()) !== 'self' && grantScope(s, 'schedule.view', now()) !== undefined,
           },
         };
       }),
@@ -947,6 +954,38 @@ export function createMockApi(options: MockApiOptions): NForceApi {
             },
           ];
         });
+      }),
+
+    teamSchedule: (from, to) =>
+      respond(() => {
+        const me = actor();
+        ensure('schedule.view', me);
+        const days = dateRange(from, to);
+        if (days.length > 62) throw new ApiError('invalid', 'Choose a range of at most 62 days.');
+        const visible = people().filter((p) => p.id === me.id || can('schedule.view', p));
+        const rows = visible.map((p): RosterRow => {
+          const cells = days.map((d) => {
+            const holiday = DEMO_HOLIDAYS[d];
+            let cell: RosterCell;
+            if (onLeave.has(`${p.id}|${d}`)) cell = { kind: 'leave' };
+            else if (holiday?.kind === 'regular' && !p.restDays.includes(isoWeekday(d))) cell = { kind: 'holiday', name: holiday.name };
+            else if (!isScheduled(p, d)) cell = { kind: 'off' };
+            else {
+              const w = shiftWindow(p, d);
+              cell = { kind: 'shift', start: w.start, end: w.end, night: p.shift.night === true, minutes: Math.max(0, (Date.parse(w.end) - Date.parse(w.start)) / 60_000 - 60) };
+            }
+            return { date: d, cell };
+          });
+          return {
+            person: view(p),
+            role: p.role,
+            ...(p.teamName !== undefined ? { teamName: p.teamName } : {}),
+            isMe: p.id === me.id,
+            days: cells,
+            minutes: cells.reduce((n, c) => n + (c.cell.kind === 'shift' ? c.cell.minutes : 0), 0),
+          };
+        });
+        return rows.sort((a, b) => Number(b.isMe) - Number(a.isMe) || (a.teamName ?? '~').localeCompare(b.teamName ?? '~') || a.person.name.localeCompare(b.person.name));
       }),
 
     tasks: () =>
@@ -1372,24 +1411,90 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         const me = actor();
         if (!authorize(subjectOf(me), 'people.directory', { organizationId: ORG }, now()).allowed) throw new ApiError('forbidden', "You don't have access to the directory.");
         const p = person(userId);
-        const sensitive = p.id === me.id || authorize(subjectOf(me), 'people.view', { ...resourceOf(p), sensitive: true }, now()).allowed;
+        const isMe = p.id === me.id;
+        const sees = (permission: Permission) => isMe || can(permission, p);
+        const sensitive = isMe || authorize(subjectOf(me), 'people.view', { ...resourceOf(p), sensitive: true }, now()).allowed;
         const h = Math.abs(hash(p.id));
         const fmt = (hm: readonly [number, number]) => `${String(hm[0]).padStart(2, '0')}:${String(hm[1]).padStart(2, '0')}`;
+        const [first = '', ...rest] = p.name.toLowerCase().split(' ');
+        const workEmail = `${first}.${rest.join('') || 'member'}@northwind.ph`;
+
+        // Leave credits and history (time-off access).
+        const leaveVisible = sees('timeoff.view');
+        const pendingDays = (type: string) =>
+          requests
+            .filter((r) => r.state.requesterId === p.id && r.state.status === 'pending' && r.payload.kind === 'leave' && r.payload.leaveTypeId === type)
+            .reduce((n, r) => n + (r.payload.kind === 'leave' ? r.payload.days : 0), 0);
+        const leaveCredits = balancesOf(p).map((b) => ({ ...b, used: Math.max(0, Math.round((b.entitled - b.available) * 2) / 2), pending: pendingDays(b.leaveTypeId) }));
+        const leaveHistory = requests
+          .filter((r) => r.state.requesterId === p.id && (r.kind === 'leave' || r.kind === 'day_off'))
+          .sort((a, b) => b.submittedAt.localeCompare(a.submittedAt))
+          .slice(0, 6)
+          .map(toMyRequest);
+
+        // Last 30 completed days of attendance (attendance access).
+        const yesterday = addDays(today(), -1);
+        const from = addDays(yesterday, -29);
+        const attendance = sees('attendance.view') ? { from, to: yesterday, metrics: summarizeAttendance(recordsFor(p, from, yesterday)) } : undefined;
+
+        // Overtime this month (timesheet access).
+        const monthStart = `${today().slice(0, 8)}01` as DateKey;
+        const overtime = sees('timesheet.view')
+          ? classifySessions(sessionsIn(p, monthStart, today()), payCtx(p)).reduce(
+              (acc, day) => {
+                const rs = overtimeRequests(p, day.date);
+                return {
+                  workedMinutes: acc.workedMinutes + day.overtimeMinutes,
+                  approvedMinutes: acc.approvedMinutes + authorizeOvertime(day, otMinutes(rs, 'approved')).approvedMinutes,
+                  pendingMinutes: acc.pendingMinutes + otMinutes(rs, 'pending'),
+                };
+              },
+              { workedMinutes: 0, approvedMinutes: 0, pendingMinutes: 0 },
+            )
+          : undefined;
+
+        const hireDate = addDays('2019-03-04', h % 2400);
+        const probationary = h % 11 === 0;
+        const digits = (n: number, len: number) => String(Math.abs(hash(`${p.id}${n}`)) % 10 ** len).padStart(len, '0');
         return {
           ...directoryEntry(p),
           chain: chainOf(p).map((id) => view(person(id))),
-          directReports: people().filter((x) => x.managerId === p.id).map(view),
+          directReports: people()
+            .filter((x) => x.managerId === p.id)
+            .map((x) => ({ person: view(x), role: x.role, ...(x.teamName !== undefined ? { teamName: x.teamName } : {}), reports: people().filter((y) => y.managerId === x.id).length })),
           access: memberAccess(me, p),
           location: p.location,
           shift: `${fmt(p.shift.start)}–${fmt(p.shift.end)}`,
           restDays: p.restDays,
+          workEmail,
+          ...(leaveVisible ? { leaveCredits, leaveHistory } : {}),
+          ...(attendance !== undefined ? { attendance } : {}),
+          ...(overtime !== undefined ? { overtime } : {}),
           ...(sensitive
             ? {
                 sensitive: {
                   employeeId: `NF-${String(1000 + (h % 9000))}`,
-                  hireDate: addDays('2021-01-04', h % 1500),
+                  hireDate,
+                  tenureMonths: Math.max(0, Math.floor((Date.parse(today()) - Date.parse(hireDate)) / (30.4375 * 86_400_000))),
+                  employmentType: probationary ? ('probationary' as const) : ('regular' as const),
+                  ...(probationary ? {} : { regularizedOn: addDays(hireDate, 182) }),
+                  workArrangement: p.location === 'Remote' ? ('remote' as const) : h % 3 === 0 ? ('hybrid' as const) : ('onsite' as const),
                   payGrade: p.role === 'staff' ? 'P2' : p.role === 'supervisor' ? 'M1' : p.role === 'manager' ? 'M2' : 'E1',
-                  emergencyContact: 'On file',
+                  birthday: addDays('1986-01-15', h % 5000),
+                  mobile: `+63 9${digits(1, 2)} ${digits(2, 3)} ${digits(3, 4)}`,
+                  personalEmail: `${first}${digits(4, 2)}@mail.ph`,
+                  address: ['Makati City, Metro Manila', 'Quezon City, Metro Manila', 'Pasig City, Metro Manila', 'Cebu City, Cebu', 'Taguig City, Metro Manila'][h % 5] ?? '',
+                  emergencyContact: {
+                    name: ['Maria', 'Jose', 'Ana', 'Carlo', 'Liza'][h % 5] + ' ' + (p.name.split(' ').at(-1) ?? ''),
+                    relationship: ['Spouse', 'Parent', 'Sibling', 'Parent', 'Spouse'][h % 5] ?? 'Family',
+                    phone: `+63 9${digits(5, 2)} ${digits(6, 3)} ${digits(7, 4)}`,
+                  },
+                  governmentIds: [
+                    { kind: 'sss' as const, masked: `••-•••••${digits(8, 2)}-${digits(9, 1)}` },
+                    { kind: 'philhealth' as const, masked: `••-•••••••${digits(10, 2)}-${digits(11, 1)}` },
+                    { kind: 'pagibig' as const, masked: `••••-••••-${digits(12, 4)}` },
+                    { kind: 'tin' as const, masked: `•••-•••-${digits(13, 3)}-000` },
+                  ],
                 },
               }
             : {}),

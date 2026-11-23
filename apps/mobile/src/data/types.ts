@@ -61,6 +61,8 @@ export interface SessionInfo {
     readonly offboard: boolean;
     readonly assignableRoles: readonly RoleTemplate[];
     readonly approveAnything: boolean;
+    /** Can see other people's schedules (team roster). */
+    readonly teamSchedule: boolean;
   };
 }
 
@@ -92,6 +94,23 @@ export interface Shift {
   readonly night: boolean;
   readonly holiday?: { readonly kind: HolidayKind; readonly name: string };
   readonly teammates: readonly Person[];
+}
+
+/** One person-day in a roster. */
+export type RosterCell =
+  | { readonly kind: 'shift'; readonly start: string; readonly end: string; readonly night: boolean; readonly minutes: number }
+  | { readonly kind: 'off' }
+  | { readonly kind: 'leave' }
+  | { readonly kind: 'holiday'; readonly name: string };
+
+export interface RosterRow {
+  readonly person: Person;
+  readonly role: RoleTemplate;
+  readonly teamName?: string;
+  readonly isMe: boolean;
+  readonly days: readonly { readonly date: DateKey; readonly cell: RosterCell }[];
+  /** Scheduled paid minutes in the range (shift length minus the unpaid break). */
+  readonly minutes: number;
 }
 
 export interface LeaveBalance {
@@ -157,6 +176,9 @@ export interface TimesheetDay extends ClassifiedDay {
   readonly pendingOvertimeMinutes: number;
   readonly breakMinutes: number;
   readonly holidayName?: string;
+  /** First clock-in and last clock-out of the day (ISO instants); no out while still working. */
+  readonly firstIn?: string;
+  readonly lastOut?: string;
 }
 
 export interface TimesheetView {
@@ -269,12 +291,40 @@ export interface DirectoryEntry {
   readonly manager?: Person;
 }
 
+/** Leave credits for one leave type, in days. */
+export interface LeaveCredit extends LeaveBalance {
+  /** Days already taken this year. */
+  readonly used: number;
+  /** Days requested and waiting for approval. */
+  readonly pending: number;
+}
+
+export interface DirectReport {
+  readonly person: Person;
+  readonly role: RoleTemplate;
+  readonly teamName?: string;
+  /** How many people report to this person in turn. */
+  readonly reports: number;
+}
+
+export type GovernmentIdKind = 'sss' | 'philhealth' | 'pagibig' | 'tin';
+
 export interface PersonProfile extends DirectoryEntry {
   readonly chain: readonly Person[];
-  readonly directReports: readonly Person[];
+  readonly directReports: readonly DirectReport[];
   readonly location: string;
   readonly shift: string;
   readonly restDays: readonly number[];
+  /** Work email (visible to everyone in the directory). */
+  readonly workEmail: string;
+  /** Leave credits, used and pending: for the person and anyone with time-off access to them. */
+  readonly leaveCredits?: readonly LeaveCredit[];
+  /** Recent leave and day-off requests (same access as leave credits). */
+  readonly leaveHistory?: readonly MyRequest[];
+  /** Last 30 days of attendance: for the person and anyone with attendance access to them. */
+  readonly attendance?: { readonly from: DateKey; readonly to: DateKey; readonly metrics: AttendanceMetrics };
+  /** Overtime this month (timesheet access). */
+  readonly overtime?: { readonly workedMinutes: number; readonly approvedMinutes: number; readonly pendingMinutes: number };
   /** What the viewer may do to this person (server-computed; mirrors the RPC checks). */
   readonly access: {
     readonly canEdit: boolean;
@@ -283,8 +333,25 @@ export interface PersonProfile extends DirectoryEntry {
     /** Roles the viewer may give this person (empty when roles can't be changed). */
     readonly assignableRoles: readonly RoleTemplate[];
   };
-  /** Present only for the person themselves or people.view.sensitive holders. */
-  readonly sensitive?: { readonly employeeId: string; readonly hireDate: DateKey; readonly payGrade: string; readonly emergencyContact: string };
+  /** Present only for the person themselves or people.view.sensitive holders (HR, owners). */
+  readonly sensitive?: {
+    readonly employeeId: string;
+    readonly hireDate: DateKey;
+    /** Whole months since the hire date. */
+    readonly tenureMonths: number;
+    readonly employmentType: 'regular' | 'probationary' | 'project';
+    /** Date the person became a regular employee. */
+    readonly regularizedOn?: DateKey;
+    readonly workArrangement: 'onsite' | 'hybrid' | 'remote';
+    readonly payGrade: string;
+    readonly birthday: DateKey;
+    readonly mobile: string;
+    readonly personalEmail: string;
+    readonly address: string;
+    readonly emergencyContact: { readonly name: string; readonly relationship: string; readonly phone: string };
+    /** Government numbers, masked except the last digits. */
+    readonly governmentIds: readonly { readonly kind: GovernmentIdKind; readonly masked: string }[];
+  };
 }
 
 export interface PayrollView extends PayrollRegister {
@@ -325,6 +392,8 @@ export interface NForceApi {
   attendance(): Promise<AttendanceSnapshot>;
   clock(type: AttendanceEventType, idempotencyKey: string): Promise<AttendanceSnapshot>;
   shifts(from: DateKey, to: DateKey): Promise<Shift[]>;
+  /** Schedules of everyone the viewer may see (themselves first), one cell per day. */
+  teamSchedule(from: DateKey, to: DateKey): Promise<RosterRow[]>;
   tasks(): Promise<Task[]>;
   createTask(input: NewTaskInput): Promise<Task>;
   setTaskDone(id: string, done: boolean): Promise<Task>;
