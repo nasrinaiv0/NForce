@@ -1,8 +1,8 @@
 # NForce Enterprise Workforce Platform Architecture
 
-**Status:** Proposed architecture  
+**Status:** Accepted architecture; Phase 1 foundation partially implemented (see §17)  
 **Owner:** Product and Engineering  
-**Last updated:** 2026-11-02  
+**Last updated:** 2026-11-23  
 **Scope:** Product blueprint and implementation guidance; this document does not claim that the described features have been implemented.
 
 ## 1. Product vision
@@ -91,7 +91,9 @@ Include separation of duties for sensitive payroll actions, temporary access exp
 
 ### Recommended starting stack
 
-- React + TypeScript; Next.js where it fits the existing repository.
+- **Mobile (implemented):** Expo + React Native + TypeScript with Expo Router, native tabs/stacks and a dual iOS (HIG) / Android (Material 3) design system. See [Mobile App Architecture](./mobile-app.md).
+- **Shared domain core (implemented):** `@nforce/core`, pure TypeScript business rules shared by every client and mirrored by database policies.
+- React + TypeScript; Next.js where it fits the existing repository (web admin, *Planned*).
 - Tailwind CSS and accessible reusable UI primitives.
 - A consistent motion library and shared design tokens.
 - React Hook Form + Zod for form validation.
@@ -229,3 +231,20 @@ Define data minimization and retention by data category and jurisdiction. Assess
 ## 16. Open decisions
 
 Confirm before implementation: initial customer scope (internal, multi-tenant SaaS, or both); target countries and payroll jurisdictions; repository/runtime constraints; first-release roles and modules; attendance evidence/location policy; offline requirements; identity provider/SSO needs; retention requirements; and payroll provider integrations.
+
+## 17. Implementation map (as of 2026-11-23)
+
+| Area | Status | Where |
+| --- | --- | --- |
+| Monorepo, CI (typecheck, lint, unit, SQL, bundle) | Implemented | `package.json`, `.github/workflows/ci.yml` |
+| Authorization (RBAC + ABAC, scopes, delegations, SoD, locked records) | Implemented and unit-tested in core; mirrored in SQL RLS | `packages/core/src/access`, `supabase/migrations` |
+| Tenancy, org structure, memberships, roles | Implemented in SQL with RLS and tests | `supabase/migrations`, `supabase/tests` |
+| Attendance (immutable events, idempotent clock RPC, replay, exceptions) | Implemented (core + SQL) | `packages/core/src/attendance`, `record_attendance_event()` |
+| Timesheet lifecycle and post-lock adjustments | Implemented in core; SQL tables *Planned (Phase 2)* | `packages/core/src/timesheet` |
+| Leave vs day-off rules | Implemented in core; SQL tables *Planned (Phase 2)* | `packages/core/src/leave` |
+| Mobile app: Home, Work, Clock, Schedule, More, Approvals, Timesheets, Time off | Implemented against an in-memory backend | `apps/mobile` |
+| Real authentication / Supabase client | *Planned* | — |
+| People, Payroll, CRM, Reports, Admin screens | *Planned* (navigation and permissions wired) | `apps/mobile/src/app/(tabs)/more/module` |
+
+Decisions are recorded in [Architecture Decision Records](./decisions.md). Award and quality targets are in the [Award-Readiness Guide](../product/award-readiness.md).
+
