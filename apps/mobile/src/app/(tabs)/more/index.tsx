@@ -90,7 +90,7 @@ export default function MoreScreen() {
 
       {session.data !== undefined && (
         <ListSection title={tr('more.workspace')}>
-          {session.data.modules.map((m, idx, list) => {
+          {[...session.data.modules.filter(m => m !== 'payroll'), 'payroll' as const].map((m, idx, list) => {
             const meta = MODULE_META[m];
             const count = m === 'approvals' ? (approvals.data ?? []).filter((a) => a.canDecide).length : 0;
             return (

@@ -17,4 +17,7 @@ select set_config('request.jwt.claim.sub',pg_temp.u(1)::text,true);
 select app.ph_record_paid_leave_day(pg_temp.org9(16),pg_temp.u(2),'2026-02-09','2026-02-10',480,(select id from public.approval_requests where organization_id=pg_temp.org9(16) and kind='leave'));
 select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
 select pg_temp.expect((app.ph_post_cutoff_2026(pg_temp.org9(16),pg_temp.u(2),'2026-02-01')->>'gross')::numeric=30000,'monthly-paid leave not added twice');
+\if :{?p15_capture}
+\ir p1_5_golden_capture.sql
+\endif
 rollback;

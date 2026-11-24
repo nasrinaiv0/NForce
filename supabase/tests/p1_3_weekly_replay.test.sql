@@ -70,4 +70,7 @@ select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
 select app.ph_approve_payroll_evidence(pg_temp.org(),(select id from ev where kind='annual'),'fictional independent check');
 select pg_temp.expect((app.ph_record_annual_settlement_2026(pg_temp.org(),pg_temp.u(2),'2026-01-12')->>'refund')::numeric=1000,'weekly final refund uses effective revision and verified prior withholding');
 select pg_temp.expect((select final_revision=2 from app.ph_annual_settlement where organization_id=pg_temp.org()),'weekly final settlement binds replacement revision');
+\if :{?p15_capture}
+\ir p1_5_golden_capture.sql
+\endif
 rollback;

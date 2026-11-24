@@ -40,3 +40,19 @@ export function formatPhpCents(value: string) {
   const s = value.padStart(3, '0');
   return '₱' + s.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + s.slice(-2);
 }
+
+/** Exact employee-only response: reject accidental additional confidential fields. */
+const personalPayrollSchema = z.strictObject({
+  organizationId: z.uuid(), userId: z.uuid(),
+  periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), periodEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  revision: z.number().int().min(1).max(2), source: z.literal('released-personal-accrual-v1'),
+  grossCents: cents, employeeContributionCents: cents, sssEmployeeCents: cents,
+  philhealthEmployeeCents: cents, pagibigEmployeeCents: cents, withholdingCents: cents, netCents: cents,
+}).refine(s => s.periodEnd >= s.periodStart &&
+  BigInt(s.employeeContributionCents) === BigInt(s.sssEmployeeCents) + BigInt(s.philhealthEmployeeCents) + BigInt(s.pagibigEmployeeCents) &&
+  BigInt(s.grossCents) === BigInt(s.netCents) + BigInt(s.employeeContributionCents) + BigInt(s.withholdingCents));
+export function parsePersonalPayroll(raw: unknown, organization: string, user: string, period: string) {
+  const s = personalPayrollSchema.parse(raw);
+  if (s.organizationId !== organization || s.userId !== user || s.periodStart !== period) throw new Error('Personal payroll scope mismatch');
+  return s;
+}

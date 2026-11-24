@@ -18,4 +18,7 @@ select pg_temp.attest(pg_temp.org9(13),'entitlement','2026-03-01','{"quoteDate":
 select pg_temp.expect((app.ph_settle_reviewed_thirteenth(pg_temp.org9(13),pg_temp.u(2),'2026-03-01')->>'amount')::numeric=2500,'effective monthly basic thirteenth accrual');
 select pg_temp.denied($$select app.ph_settle_reviewed_thirteenth(pg_temp.org9(13),pg_temp.u(2),'2026-03-01')$$,'P0001','duplicate statutory accrual denied');
 select pg_temp.expect((select count(*)=1 from app.ph_benefit_event where organization_id=pg_temp.org9(13)),'one canonical benefit event');
+\if :{?p15_capture}
+\ir p1_5_golden_capture.sql
+\endif
 rollback;

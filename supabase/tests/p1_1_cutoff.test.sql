@@ -49,5 +49,8 @@ select set_config('request.jwt.claim.sub',pg_temp.u(3)::text,true);
 select pg_temp.denied($$select app.ph_export_reviewed_month(pg_temp.org9(4),'2026-02-01')$$,'42501','staff export denied');
 select pg_temp.expect(not has_function_privilege('authenticated','app.ph_replay_cutoff_2026(uuid,uuid,date)','EXECUTE'),'replay stays private');
 select pg_temp.expect(not has_table_privilege('authenticated','app.ph_effective_monetary','SELECT'),'effective ledger private');
+\if :{?p15_capture}
+\ir p1_5_golden_capture.sql
+\endif
 rollback;
 

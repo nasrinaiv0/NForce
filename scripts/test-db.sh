@@ -23,9 +23,28 @@ PSQL=("${RUN_AS[@]}" "$PGBIN/psql" -h "$WORK" -p "$PORT" -U postgres -d postgres
 # Reject duplicate Supabase migration prefixes before applying.
 duplicates="$(for f in "$ROOT"/supabase/migrations/*.sql; do basename "$f" | cut -d_ -f1; done | sort | uniq -d)"
 test -z "$duplicates" || { printf 'duplicate migration versions: %s\n' "$duplicates"; exit 1; }
+# Capture the accepted P1.5 baseline before arithmetic extraction and compare
+# in the identical disposable cluster after applying the new migration.
+capture_p15() {
+  local stage="$1" fixture file
+  for fixture in p1_1_cutoff p1_3_monthly p1_3_cutoff_leave p1_3_weekly_replay p1_4_maternity_integration; do
+    file="$WORK/$stage-$fixture"
+    "${PSQL[@]}" -A -t -v p15_capture=1 -f "$ROOT/supabase/tests/$fixture.test.sql" >"$file.raw" 2>"$file.log" || { cat "$file.log"; return 1; }
+    grep '^P15_GOLDEN|' "$file.raw" >"$file"
+    test "$(wc -l < "$file")" -eq 1
+  done
+}
 for f in "$ROOT"/supabase/migrations/*.sql; do
+  if [[ "$(basename "$f")" == 20261221000000_p1_5_equivalent_arithmetic.sql ]]; then
+    capture_p15 baseline
+  fi
   echo "applying $(basename "$f")"
   "${PSQL[@]}" -f "$f"
+done
+capture_p15 candidate
+for fixture in p1_1_cutoff p1_3_monthly p1_3_cutoff_leave p1_3_weekly_replay p1_4_maternity_integration; do
+  diff -u "$WORK/baseline-$fixture" "$WORK/candidate-$fixture"
+  echo "P15 differential exact match: $fixture"
 done
 for f in "$ROOT"/supabase/tests/*.test.sql; do
   echo "running $(basename "$f")"

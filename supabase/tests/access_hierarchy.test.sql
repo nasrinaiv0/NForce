@@ -94,6 +94,38 @@ do $$ begin
 end $$;
 reset role;
 
+-- Monetary confidentiality is independent of reporting-line and HR authority.
+-- Enable fictional review gate to distinguish authorization from absent data.
+insert into app.accounting_review_access(organization_id,evidence_reference,enabled_by,expires_at) values(pg_temp.org(),'fictional independent review',pg_temp.u('owner'),now()+interval '1 day');
+select pg_temp.act_as(pg_temp.u('payroll'));
+select pg_temp.raises($select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$,'P0001','payroll passes role gate but absent monetary data remains blocked');
+reset role;
+select pg_temp.act_as(pg_temp.u('owner'));
+select pg_temp.raises($select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$,'P0001','owner passes role gate but absent monetary data remains blocked');
+reset role;
+select pg_temp.act_as(pg_temp.u('staff'));
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','staff cannot access management payroll');
+reset role;
+select pg_temp.act_as(pg_temp.u('sup'));
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','supervisor cannot access management payroll');
+reset role;
+select pg_temp.act_as(pg_temp.u('mgr'));
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','department manager cannot access management payroll');
+select pg_temp.expect(not app.has_permission(pg_temp.org(),'attendance.view',pg_temp.u('hr')),'manager cannot see another department');
+reset role;
+select pg_temp.act_as(pg_temp.u('vp'));
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','executive aggregate reporting does not grant payroll access');
+reset role;
+select pg_temp.act_as(pg_temp.u('hr'));
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','HR cannot access management payroll');
+reset role;
+select pg_temp.act_as(pg_temp.u('it'));
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','IT administration does not grant payroll access');
+reset role;
+select pg_temp.act_as(pg_temp.u('outsider'));
+select pg_temp.raises($$select public.payroll_self_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','foreign organization owner cannot read personal payroll in another tenant');
+reset role;
+
 -- ---------------------------------------------------------------- routing
 select pg_temp.submit('mgr', 'mgr_fix', 'correction', '{"date":"2026-11-20"}');
 select pg_temp.submit('staff', 'staff_off', 'day_off', '{"start":"2026-12-10","end":"2026-12-10"}');

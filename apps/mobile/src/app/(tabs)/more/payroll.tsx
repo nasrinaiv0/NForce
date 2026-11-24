@@ -5,6 +5,8 @@ import { StyleSheet, View } from 'react-native';
 import { Button } from '@/components/Button';
 import { PayrollManagementSummary } from '@/components/PayrollManagementSummary';
 import { AccountingReview } from '@/components/AccountingReview';
+import { PersonalPayrollReview } from '@/components/PersonalPayrollReview';
+import { useBackend } from '@/state/backend';
 import { usePreference } from '@/state/preferences';
 import { KpiTile } from '@/components/Charts';
 import { DataTable, type Column } from '@/components/DataTable';
@@ -16,7 +18,7 @@ import { Card, ListSection } from '@/components/Surface';
 import { Text } from '@/components/Text';
 import { Touchable } from '@/components/Touchable';
 import { payrollFields } from '@/data/listFields';
-import { errorMessage, useLockPayroll, usePayroll } from '@/data/queries';
+import { errorMessage, useLockPayroll, usePayroll, useSession } from '@/data/queries';
 import { haptics } from '@/design/haptics';
 import { useTheme } from '@/design/theme';
 import { useResponsive } from '@/hooks/useResponsive';
@@ -29,6 +31,19 @@ type SortKey = string;
 /** Payroll preparation: approved hours by pay code, blockers, export and period lock. */
 export default function PayrollScreen() {
   const backend = usePreference('backend');
+  const persona = usePreference('persona');
+  const session = useSession();
+  const selected = usePreference('workspaceId');
+  const workspaces = useBackend(s => s.workspaces);
+  const workspace = workspaces?.find(w => w.organizationId === selected) ?? workspaces?.[0];
+  const user = useBackend(s => s.userId);
+  const auth = useBackend(s => s.auth);
+  const canManage = session.data?.modules.includes('payroll') === true &&
+    (backend === 'demo' ? session.data.role === persona && persona !== 'staff' :
+      auth === 'signed_in' && user !== undefined && workspace !== undefined &&
+      session.data.user.id === user && session.data.organization.id === workspace.organizationId &&
+      session.data.role === workspace.role && workspace.role !== 'staff');
+  if (!canManage) return <Screen><PersonalPayrollReview /></Screen>;
   return backend === 'live' ? <Screen><AccountingReview scope="organization" /></Screen> : <DemoPayrollScreen />;
 }
 
@@ -111,10 +126,10 @@ function DemoPayrollScreen() {
         <Pill label={p.locked ? i18n.t('payroll.locked') : p.ready ? i18n.t('payroll.ready') : i18n.plural('payroll.blocked', p.blockers)} tone={p.locked ? 'primary' : p.ready ? 'success' : 'warning'} icon={p.locked ? 'lock' : undefined} dot={!p.locked} />
       </View>
       <View style={[styles.kpis, { gap: t.space.md, flexDirection: isDesktop ? 'row' : 'column' }]}>
-        <KpiTile label={i18n.t('payroll.employees')} value={i18n.number(p.rows.length)} />
-        <KpiTile label={i18n.t('payroll.payableHours')} value={formatDuration(p.totals.payableMinutes)} />
-        <KpiTile label={i18n.t('timesheet.paidEquivalent')} value={formatDuration(p.totals.weightedMinutes)} hint={i18n.t('timesheet.paidEquivalentHint')} />
-        <KpiTile label={i18n.t('payroll.unapprovedOt')} value={formatDuration(p.totals.unapprovedOvertimeMinutes)} hint={i18n.t('payroll.unapprovedHint')} />
+        <KpiTile wrapContent stacked={!isDesktop} label={i18n.t('payroll.employees')} value={i18n.number(p.rows.length)} />
+        <KpiTile wrapContent stacked={!isDesktop} label={i18n.t('payroll.payableHours')} value={formatDuration(p.totals.payableMinutes)} />
+        <KpiTile wrapContent stacked={!isDesktop} label={i18n.t('timesheet.paidEquivalent')} value={formatDuration(p.totals.weightedMinutes)} hint={i18n.t('timesheet.paidEquivalentHint')} />
+        <KpiTile wrapContent stacked={!isDesktop} label={i18n.t('payroll.unapprovedOt')} value={formatDuration(p.totals.unapprovedOvertimeMinutes)} hint={i18n.t('payroll.unapprovedHint')} />
       </View>
       {!p.locked && !p.ready && (
         <Card style={[styles.row, { backgroundColor: t.colors.warningContainer }]}>
