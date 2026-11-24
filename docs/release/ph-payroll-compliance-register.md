@@ -46,3 +46,13 @@ Status P = partial candidate/demo; U = unverified/not evidenced; C = candidate i
 5. Security: review function grants, schema exposure, search_path, tenant isolation, bypasses, old sessions, exact-head tests and preview env isolation. No real data. Do not apply migrations remotely; disposable DB only. No production secrets in preview.
 6. Claude (independent reviewer, not executed): inspect duplication, numeric and date validation, server authoritative input, architecture and all UI routes; review typography, padding, buttons, 44pt targets, keyboard/screen reader, responsive 320/390/768/1440 layouts, dark mode, reduced motion, performance. Capture fictional-data screenshots and exact-head results; no production changes.
 7. Rollback: abandon staging branch; no remote state touched. Future migration rollback requires separate approval and restore rehearsal. No weakening existing public gates. No merges.
+
+## 2026-11-24 follow-up traceability (candidate status, not acceptance)
+| ID | Candidate evidence | Remaining mandatory gate |
+|---|---|---|
+| HR-01–04, LAB-05 | PR #7 ph_employment_history / ph_employment_as_of | Authorized importer, validated actor and wage order, immutable payroll snapshot integration, lifecycle and correction acceptance |
+| LAB-01–04 | PR #8 ph_segment_workday | Authoritative attendance replay and approved calendar, all 32 monetary pay rates, company policy, legally reviewed workday boundaries, post-lock corrections |
+| BIR-12–14 | PR #9 planned private classification, RR 29-2025 benefit caps, RMC 50-2018 excess, RR 11-2018 MWE | verified wage order, evidence, historic opening balances, persistent idempotent benefit ledger, medical mode, CPA signoff |
+| BIR-15–16,18 | PR #9 planned limited rank-and-file classification | contributions allocation, reimbursement, retirement, separation, FBT and specialist exceptions |
+| BIR-07–11,19–20 | PR #9 planned annualization primitive per RR 11-2018 pp34–35 | verified 2316 imports, full year history, cumulative average method, refund settlement and substituted filing; 2026 year-end release not authorized |
+All candidates private, no payroll API exposure. Independent review instructions in progress log; no remote migrations or merge. Exact-head CI must be checked individually.
