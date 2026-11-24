@@ -197,7 +197,7 @@ declare s app.accounting_locked_snapshot; o app.ph_monetary_opening; m app.ph_mo
  line_amount numeric; raw_gross numeric:=0; gross numeric; hourly numeric;
  ee numeric:=0; er numeric:=0; tax numeric; net numeric; taxable numeric;
  prev_taxable numeric; prev_tax numeric; n int; last_period date; pd date:=p_period+6; mon date;
- a app.ph_payroll_attestation; opening app.ph_payroll_attestation; prior jsonb; b app.ph_benefit_event; exempt numeric:=0; d date; minutes numeric; seen date[]:='{}'; e app.ph_workday_evidence;
+ a app.ph_payroll_attestation; opening app.ph_payroll_attestation; prior jsonb; b app.ph_benefit_event; exempt numeric:=0; d date; minutes numeric; seen date[]:='{}'; ev_day app.ph_workday_evidence;
  contrib jsonb:='{}'; j jsonb; agency text; basis numeric; v jsonb; lines jsonb:='[]'; journal jsonb; total numeric;
 begin
  perform app.accounting_tenant_lock(p_org);
@@ -218,6 +218,7 @@ begin
  select count(*)::int,coalesce(sum(x.taxable),0),coalesce(sum(x.withholding),0),max(x.period_start)
  into n,prev_taxable,prev_tax,last_period from app.ph_monetary_snapshot x where organization_id=p_org and user_id=p_user and extract(year from x.pay_date)=2026;
  if (n=0 and p_period<>o.first_period) or (n>0 and p_period<>last_period+7) then raise exception 'noncontiguous payroll history' using errcode='P0001'; end if;
+ if exists(select 1 from app.ph_benefit_event b2 where b2.organization_id=p_org and b2.user_id=p_user and b2.tax_year=2026 and b2.paid_on<p_period and not exists(select 1 from app.ph_monetary_snapshot x where x.organization_id=p_org and x.user_id=p_user and b2.paid_on between x.period_start and x.pay_date)) then raise exception 'unreconciled earlier benefit' using errcode='P0001'; end if;
  for l in select value from jsonb_array_elements(s.reconciliation->'payLines') loop
  select eh.* into h from app.ph_workday_evidence e join app.ph_employment_history eh on (eh.organization_id,eh.user_id,eh.effective_on,eh.recorded_at)=(e.organization_id,e.user_id,e.employment_effective_on,e.employment_recorded_at)
  where e.organization_id=p_org and e.period_start=p_period and e.user_id=p_user and e.work_date=(l->>'workday')::date;
@@ -225,6 +226,7 @@ begin
  if h.pay_basis='hourly' then hourly:=h.rate_php;
  elsif h.pay_basis='daily' then hourly:=h.rate_php/8;
  elsif h.pay_basis='monthly' then
+ perform app.ph_approved_evidence(p_org,p_user,'divisor',h.effective_on);
  select * into dv from app.ph_salary_divisor_evidence where (organization_id,user_id,effective_on,recorded_at)=(h.organization_id,h.user_id,h.effective_on,h.recorded_at);
  if not found then raise exception 'reviewed salary divisor missing' using errcode='P0001'; end if;
  hourly:=h.rate_php*12/dv.annual_paid_days/8;
@@ -240,9 +242,9 @@ begin
  or l->>'kind' is null or l->>'kind' not in ('paid_leave','paid_regular_holiday') or length(btrim(coalesce(l->>'reference','')))<8
  or exists(select 1 from jsonb_array_elements(s.reconciliation->'payLines') x where (x->>'date')::date=d or (x->>'workday')::date=d)
  then raise exception 'invalid or overlapping paid nonwork' using errcode='22023'; end if;
- select * into e from app.ph_workday_evidence where organization_id=p_org and user_id=p_user and period_start=p_period and work_date=d;
- if not found or (l->>'kind'='paid_regular_holiday' and e.calendar_classes->>d::text not in ('regular_holiday','regular_holiday_rest')) then raise exception 'nonwork calendar evidence missing' using errcode='P0001'; end if;
- select * into h from app.ph_employment_history where (organization_id,user_id,effective_on,recorded_at)=(e.organization_id,e.user_id,e.employment_effective_on,e.employment_recorded_at);
+ select * into ev_day from app.ph_workday_evidence where organization_id=p_org and user_id=p_user and period_start=p_period and work_date=d;
+ if not found or (l->>'kind'='paid_regular_holiday' and ev_day.calendar_classes->>d::text not in ('regular_holiday','regular_holiday_rest')) then raise exception 'nonwork calendar evidence missing' using errcode='P0001'; end if;
+ select * into h from app.ph_employment_history where (organization_id,user_id,effective_on,recorded_at)=(ev_day.organization_id,ev_day.user_id,ev_day.employment_effective_on,ev_day.employment_recorded_at);
  if h.pay_basis='hourly' then hourly:=h.rate_php; elsif h.pay_basis='daily' then hourly:=h.rate_php/8; else raise exception 'paid nonwork salary basis requires separate review' using errcode='P0001'; end if;
  line_amount:=hourly*minutes/60; raw_gross:=raw_gross+line_amount; seen:=array_append(seen,d);
  lines:=lines||jsonb_build_array(l||jsonb_build_object('unroundedAmount',line_amount,'employmentRevision',h.recorded_at));

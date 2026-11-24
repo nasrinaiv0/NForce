@@ -259,3 +259,5 @@ Copy and complete for each meaningful change:
 ## 2026-11-24 — P0.8 statutory review candidate
 
 - Parent #14 and #16 core/database/web green; isolated acceptance and Vercel pending. Documented source evidence, private maker-checker, compensation/benefit reconciliation, prior employer custody gate and annual adjustment before commit. No hosted changes.
+
+- Initial SQL run 138171893251 reproduced PL/pgSQL ambiguity between workday record variable and join alias. Renamed record, retained qualified attendance join; updated outdated 2026 PhilHealth reject fixture to December cutoff. Added prior-certificate and annual settlement tests and dependency-free authenticated AES-GCM envelope utility with tampering and cross-tenant tests. No production wiring.
