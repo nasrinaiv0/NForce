@@ -358,6 +358,32 @@ end $$;
 alter table app.ph_monetary_snapshot add check((frequency='weekly' and pay_date=period_start+6 and tax_deductible is null) or
  (frequency in ('daily','semi-monthly','monthly') and period_start>=date '2026-01-06' and pay_date<=date '2026-11-24' and pay_date=app.ph_period_end(period_start,frequency) and tax_deductible is not null));
 
+
+-- Cutoff paid leave uses the original approved request, usage and allocation,
+-- not a second benefit ledger. Reject late allocation for every frequency.
+create function app.ph_guard_posted_leave_allocation() returns trigger language plpgsql set search_path='' as $$
+begin
+ perform app.accounting_tenant_lock(new.organization_id);
+ if exists(select 1 from app.ph_monetary_snapshot s where s.organization_id=new.organization_id and s.user_id=new.user_id and new.work_date between s.period_start and s.pay_date) then raise exception 'posted leave requires correction workflow' using errcode='42501';end if;
+ return new;
+end $$;
+create trigger p13_posted_leave before insert on app.ph_paid_leave_allocation for each row execute function app.ph_guard_posted_leave_allocation();
+create function app.ph_cutoff_leave_minutes(p_org uuid,p_user uuid,p_start date,p_end date,p_day date,p_nonwork jsonb) returns int
+language plpgsql stable set search_path='' as $$
+declare a app.ph_paid_leave_allocation;q public.approval_requests;used numeric;requested numeric;
+begin
+ if (p_nonwork->>'minutes')::numeric is distinct from 480::numeric or (p_nonwork->>'requestId')::uuid is null then raise exception 'reviewed full paid leave day required' using errcode='P0001';end if;
+ select * into a from app.ph_paid_leave_allocation where organization_id=p_org and user_id=p_user and work_date=p_day;
+ if not found or a.minutes<>480 or a.request_id is distinct from (p_nonwork->>'requestId')::uuid then raise exception 'approved paid leave allocation required' using errcode='P0001';end if;
+ select * into q from public.approval_requests where id=a.request_id and organization_id=p_org and requester_id=p_user and kind='leave' and status='approved';
+ if not found or (q.payload->>'start')::date is null or (q.payload->>'end')::date is null or (q.payload->>'start')::date<p_start or (q.payload->>'end')::date>p_end or p_day not between (q.payload->>'start')::date and (q.payload->>'end')::date then raise exception 'approved leave request must be within cutoff' using errcode='P0001';end if;
+ select -days*480 into requested from public.leave_transactions where organization_id=p_org and user_id=p_user and request_id=a.request_id and kind='usage';
+ select sum(x.minutes) into used from app.ph_paid_leave_allocation x where x.organization_id=p_org and x.user_id=p_user and x.request_id=a.request_id and x.work_date between p_start and p_end;
+ if requested is null or requested<=0 or requested is distinct from used then raise exception 'leave usage incomplete' using errcode='P0001';end if;
+ return a.minutes;
+end $$;
+revoke all on function app.ph_guard_posted_leave_allocation(),app.ph_cutoff_leave_minutes(uuid,uuid,date,date,date,jsonb) from public,anon,authenticated,service_role;
+
 create or replace function app.ph_post_cutoff_version(p_org uuid,p_user uuid,p_start date,p_replay boolean)
 returns jsonb language plpgsql set search_path='' as $$
 declare a app.ph_payroll_attestation;o app.ph_payroll_attestation;wa app.ph_payroll_attestation;ca app.ph_payroll_attestation;
@@ -416,7 +442,11 @@ begin
  where q.organization_id=p_org and q.user_id=p_user and
  (((l->>'workday')::date between p_start and e) is distinct from ((l->>'date')::date between p_start and e)))
  then raise exception 'adjustment or cross-cutoff workday requires allocation review' using errcode='P0001';end if;
- if exists(select 1 from public.approval_requests q where q.organization_id=p_org and q.requester_id=p_user and q.kind='leave' and q.status='approved' and (q.payload->>'start')::date<=e and (q.payload->>'end')::date>=p_start) then raise exception 'cutoff leave requires approved allocation review' using errcode='P0001';end if;
+
+ if exists(select 1 from public.approval_requests q where q.organization_id=p_org and q.requester_id=p_user and q.kind='leave' and q.status='approved' and (q.payload->>'start')::date<=e and (q.payload->>'end')::date>=p_start
+ and not exists(select 1 from app.ph_paid_leave_allocation x where x.organization_id=p_org and x.user_id=p_user and x.request_id=q.id and x.work_date between p_start and e)) then raise exception 'cutoff leave requires approved allocation review' using errcode='P0001';end if;
+ if exists(select 1 from app.ph_paid_leave_allocation x where x.organization_id=p_org and x.user_id=p_user and x.work_date between p_start and e and
+ ((a.payload->'nonwork'->x.work_date::text->>'kind') is distinct from 'paid_leave' or (a.payload->'nonwork'->x.work_date::text->>'requestId') is distinct from x.request_id::text)) then raise exception 'unreconciled paid leave allocation' using errcode='P0001';end if;
  first_h:=app.ph_employment_as_of(p_org,p_user,p_start,clock_timestamp());
  if first_h.status<>'employed' then raise exception 'historically employed period required' using errcode='P0001';end if;
  if first_h.pay_basis not in ('daily','hourly','monthly') or freq not in ('daily','semi-monthly','monthly') or (first_h.pay_basis='monthly' and freq<>'monthly') then raise exception 'restricted cutoff compensation basis' using errcode='P0001';end if;
@@ -472,11 +502,16 @@ begin
  if nonwork is null or jsonb_typeof(nonwork)<>'object' or length(btrim(coalesce(nonwork->>'reference','')))<8 then raise exception 'zero-work date requires disposition' using errcode='P0001';end if;
  if nonwork->>'kind' not in ('paid_leave','paid_regular_holiday','unpaid_nonwork','monthly_covered') or nonwork->>'kind' is null then raise exception 'unsupported nonwork disposition' using errcode='22023';end if;
  if nonwork->>'kind'='paid_regular_holiday' and coalesce(ev.calendar_classes->>d::text,'') not in ('regular_holiday','regular_holiday_rest') then raise exception 'holiday evidence mismatch' using errcode='P0001';end if;
- if h.pay_basis='monthly' and nonwork->>'kind'<>'monthly_covered' then raise exception 'partial monthly salary requires separate review' using errcode='P0001';end if;
+ if h.pay_basis='monthly' and nonwork->>'kind' not in ('monthly_covered','paid_leave') then raise exception 'partial monthly salary requires separate review' using errcode='P0001';end if;
  if h.pay_basis<>'monthly' and nonwork->>'kind'='monthly_covered' then raise exception 'invalid monthly coverage' using errcode='P0001';end if;
  if nonwork->>'kind' in ('paid_leave','paid_regular_holiday') then
- if nonwork->>'kind'='paid_leave' then raise exception 'cutoff paid leave requires canonical allocation review' using errcode='P0001';end if;
- amount:=rate*8;raw_basic:=raw_basic+amount;if is_mwe then raw_exempt:=raw_exempt+amount;end if;
+ 
+ if nonwork->>'kind'='paid_leave' then
+ if is_mwe or coalesce(ev.calendar_classes->>d::text,'')<>'ordinary' then raise exception 'MWE or nonordinary leave classification needs review' using errcode='P0001';end if;
+ amount:=rate*app.ph_cutoff_leave_minutes(p_org,p_user,p_start,e,d,nonwork)/60;
+ if h.pay_basis='monthly' then amount:=0;end if;
+ else amount:=rate*8;end if;
+ raw_basic:=raw_basic+amount;if is_mwe then raw_exempt:=raw_exempt+amount;end if;
  end if;
  lines:=lines||jsonb_build_array(nonwork||jsonb_build_object('date',d,'wageEvidence',wa.id,'employmentRevision',h.recorded_at));
  end if;

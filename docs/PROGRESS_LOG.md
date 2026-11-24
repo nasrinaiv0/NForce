@@ -300,3 +300,5 @@ Before commit: parent exact-head checks and actual screenshots reviewed; canonic
 - Initial P1.3 DB job 138196314854 passed weekly replay and form math. Before commit: extend same cutoff calculator to full monthly periods, reviewed monthly salary/divisor and overlap checks; test monthly replacement and canonical 13th accrual duplicate denial. No new monetary engine or remote changes.
 
 - DB 138197003461 passed. Before commit: actual worksheet against effective reviewed month, staff denial, weekly final revision and monthly concurrent replay assertions. Python Decimal independently verified PHP26542.45 and PHP27392.45. No hosted changes.
+
+- Before commit: add restricted ordinary full-day approved leave in all cutoff frequencies via original allocation and usage; guard late allocations, test missing evidence and no duplicate monthly salary. Do not claim full statutory eligibility. No hosted changes.
