@@ -229,3 +229,25 @@ end $$;
 create trigger ph_2316_post_guard before insert on app.ph_2316_import for each row execute function app.ph_guard_2316_after_post();
 create trigger ph_2316_review_post_guard before insert on app.ph_2316_review for each row execute function app.ph_guard_2316_after_post();
 revoke all on function app.ph_guard_2316_after_post() from public,anon,authenticated,service_role;
+
+-- Minute-only adjustments cannot silently alter a posted monetary month.
+-- A separate authorized reversal/replay workflow is required before such a change.
+create function app.ph_guard_adjustment_after_money() returns trigger
+language plpgsql set search_path='' as $$
+declare a app.accounting_adjustment_proposal;
+begin
+ if tg_table_name='accounting_adjustment_proposal' then
+  a:=new;
+ else
+  select * into a from app.accounting_adjustment_proposal where id=new.proposal_id;
+  if not found then raise exception 'missing adjustment proposal' using errcode='P0001'; end if;
+ end if;
+ perform app.accounting_tenant_lock(a.organization_id);
+ if exists(select 1 from app.ph_money_snapshot s where s.organization_id=a.organization_id and s.user_id=a.user_id
+ and a.period_start< (s.pay_month+interval '1 month')::date and a.period_start+7>=s.pay_month)
+ then raise exception 'posted monetary month requires authorized reversal' using errcode='42501'; end if;
+ return new;
+end $$;
+create trigger ph_adjustment_post_guard before insert on app.accounting_adjustment_proposal for each row execute function app.ph_guard_adjustment_after_money();
+create trigger ph_adjustment_decision_post_guard before insert on app.accounting_adjustment_decision for each row execute function app.ph_guard_adjustment_after_money();
+revoke all on function app.ph_guard_adjustment_after_money() from public,anon,authenticated,service_role;
