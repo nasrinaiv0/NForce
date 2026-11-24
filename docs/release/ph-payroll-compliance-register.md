@@ -96,3 +96,6 @@ See [P1.1 canonical cutoffs](p1-1-cutoffs.md) for statutory evidence, restricted
 
 ## P1.2
 See [revision candidate](p1-2-revision-settlement.md). Restricted replay and internal exports; no official filing or production activation.
+
+## P1.3
+See [statutory reconciliation](p1-3-statutory-reconciliation.md) for weekly revision replay and limited BIR 1601-C worksheet validation; not official filing certification.

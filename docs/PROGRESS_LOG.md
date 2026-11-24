@@ -293,3 +293,12 @@ Copy and complete for each meaningful change:
 - Initial #23 database job 138191355891 passed. Before commit: add explicit two-connection replay contention using disposable DB and verify one replacement/audit. No hosted changes.
 
 - Before final-settlement commit: extend only ordinary reviewed cutoff resignation with full effective YTD, 13th ledger and contribution allocation completeness; retain weekly route, no other entitlement or payment enabled. Refactor common fixture and add final annual journal/report regression.
+
+## P1.3 — 2026-11-24
+Before commit: parent exact-head checks and actual screenshots reviewed; canonical weekly replay and effective final revision, restricted BIR Part II validator, tests and remaining legal gates documented. No hosted changes.
+
+- Initial P1.3 DB job 138196314854 passed weekly replay and form math. Before commit: extend same cutoff calculator to full monthly periods, reviewed monthly salary/divisor and overlap checks; test monthly replacement and canonical 13th accrual duplicate denial. No new monetary engine or remote changes.
+
+- DB 138197003461 passed. Before commit: actual worksheet against effective reviewed month, staff denial, weekly final revision and monthly concurrent replay assertions. Python Decimal independently verified PHP26542.45 and PHP27392.45. No hosted changes.
+
+- Before commit: add restricted ordinary full-day approved leave in all cutoff frequencies via original allocation and usage; guard late allocations, test missing evidence and no duplicate monthly salary. Do not claim full statutory eligibility. No hosted changes.
