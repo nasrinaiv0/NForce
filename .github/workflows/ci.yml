@@ -26,6 +26,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      - name: Test private document envelope cryptography
+        run: node --test scripts/ph-2316-envelope.test.mjs
       - name: Core tests with coverage thresholds
         run: npm run test:coverage -w @nforce/core
       - name: App tests

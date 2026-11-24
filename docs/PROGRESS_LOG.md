@@ -255,3 +255,11 @@ Copy and complete for each meaningful change:
 ## 2026-11-24 — P0.7 monetary candidate
 
 - Documented narrow private 2025 weekly attendance-only monetary scope, cumulative withholding, reviewed divisor and contribution bases, balanced immutable accrual and opaque envelope custody before committing. Initial P0.7 database job 138169689445 passed. Python independently reconciled fictional amounts. Restack the newly created candidate directly on PR #14's browser runner fix 93e967f3a6109cefa9dbe5e44bcdd44a21fea2ea using a checked lease; no merge. Revalidate exact head. No remote migration, paid resources or production changes.
+
+## 2026-11-24 — P0.8 statutory review candidate
+
+- Parent #14 and #16 core/database/web green; isolated acceptance and Vercel pending. Documented source evidence, private maker-checker, compensation/benefit reconciliation, prior employer custody gate and annual adjustment before commit. No hosted changes.
+
+- Initial SQL run 138171893251 reproduced PL/pgSQL ambiguity between workday record variable and join alias. Renamed record, retained qualified attendance join; updated outdated 2026 PhilHealth reject fixture to December cutoff. Added prior-certificate and annual settlement tests and dependency-free authenticated AES-GCM envelope utility with tampering and cross-tenant tests. No production wiring.
+
+- Exact-head job 138172434982 passed gross/net, prior certificate and annual refund assertions, then hit a malformed dollar-quoted immutability test. Corrected the test delimiter only. Python Decimal independently matched gross PHP1211.25, net PHP611.25, annual refund PHP1000.00 and balanced PHP2071.25. Recheck full suite on replacement head.

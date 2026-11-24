@@ -1,0 +1,11 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { createHash, randomBytes } from 'node:crypto';
+import { seal2316, open2316 } from './ph-2316-envelope.mjs';
+const plain = Buffer.from('Fictional document only');
+const ctx={org:'fb100000-0000-0000-0000-000000000001',id:'fb100000-0000-0000-0000-000000000002',keyRef:'fixture-key-2026',key:randomBytes(32),expectedSha256:createHash('sha256').update(plain).digest('hex')};
+const wrap=()=>seal2316({...ctx,plaintext:plain});
+test('authenticated encryption round trip and unique nonce',()=>{const a=wrap(), b=wrap();assert.notDeepEqual(a.bytes,b.bytes);assert.deepEqual(open2316({...ctx,bytes:a.bytes,ciphertextSha256:a.sha256}),plain);assert.equal(a.bytes.includes(plain),false);});
+test('wrong tenant, document, key, and key reference denied',()=>{const a=wrap();for(const x of [{org:'fb100000-0000-0000-0000-000000000099'},{id:'fb100000-0000-0000-0000-000000000099'},{key:randomBytes(32)},{keyRef:'different-key'}])assert.throws(()=>open2316({...ctx,...x,bytes:a.bytes,ciphertextSha256:a.sha256}));});
+test('tampered ciphertext fails even with recalculated hash',()=>{const a=wrap();a.bytes[a.bytes.length-1]^=1;assert.throws(()=>open2316({...ctx,bytes:a.bytes,ciphertextSha256:createHash('sha256').update(a.bytes).digest('hex')}));});
+test('mismatched plaintext hash fails before encrypting',()=>assert.throws(()=>seal2316({...ctx,plaintext:Buffer.from('wrong')})));
