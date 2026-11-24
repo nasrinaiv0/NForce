@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
 import { useSession } from '@/data/queries';
-import { TextInput, View } from 'react-native';
+import { Platform, TextInput, View, useWindowDimensions } from 'react-native';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Surface';
 import { Text } from '@/components/Text';
-import { formatPhpCents, formatPayslipDecimal, formatPayslipInstant, parsePersonalPayrollDetail, type PersonalPayrollDetail } from '@/data/accountingReview';
+import { formatPhpCents, formatPayslipDecimal, formatPayslipInstant, parsePersonalPayrollDetail, parsePayrollHistory, parseDisputeReceipts, disputeReceiptSchema, type PersonalPayrollDetail } from '@/data/accountingReview';
+import { buildPayslipPdf } from '@/data/payslipPdf';
 import { liveConfigured, supabase } from '@/data/supabase';
 import { useTheme } from '@/design/theme';
 import { useI18n } from '@/i18n';
@@ -50,12 +51,61 @@ export function PersonalPayrollReview() {
  const identity=session.data;
  const identityValid=identity!==undefined&&(backend==='demo'?identity.role===persona:state.auth==='signed_in'&&identity.user.id===user&&identity.organization.id===org);
  const v=modern[i18n.locale];
+ const l=lifecycle[i18n.locale];
+ const {width}=useWindowDimensions();
+ const [exporting,setExporting]=useState(false);
+ const [exportError,setExportError]=useState(false);
+ const isLive=backend==='live'&&liveConfigured&&state.auth==='signed_in'&&user!==undefined&&org!==undefined;
+ const stillAuthorized=()=>{const current=backendStore.get();return current.auth==='signed_in'&&current.userId===user&&activeWorkspace(current)?.organizationId===org;};
+ const history=useQuery({queryKey:['nforce','personal-history-2026',user,org],enabled:isLive,retry:false,gcTime:0,staleTime:0,refetchOnMount:'always',refetchInterval:15000,queryFn:async()=>{
+  if(org===undefined||user===undefined)throw new Error('Unavailable');
+  const {data,error}=await supabase().rpc('payroll_self_history',{p_organization_id:org,p_year:2026});
+  if(error!==null||!stillAuthorized())throw new Error('Unavailable');
+  return parsePayrollHistory(data,org,user);
+ }});
+ const h=isLive&&!history.isFetching&&!history.isError?history.data:undefined;
+ const demoSummary={organizationId:'00000000-0000-4000-8000-000000000001',userId:'00000000-0000-4000-8000-000000000002',periodStart:'2026-02-01',periodEnd:'2026-02-28',revision:1,source:'released-personal-accrual-v1' as const,grossCents:'3000000',sssEmployeeCents:'150000',philhealthEmployeeCents:'75000',pagibigEmployeeCents:'20000',employeeContributionCents:'245000',withholdingCents:'100755',netCents:'2654245'};
+ const exportPdf=async()=>{
+  if(Platform.OS!=='web'||exporting)return;
+  setExporting(true);setExportError(false);
+  try{
+   let fresh:PersonalPayrollDetail;
+   if(backend==='demo')fresh={...fictionalDetail,summary:demoSummary};
+   else{
+    if(!isLive||org===undefined||user===undefined||liveData===undefined)throw new Error('Unavailable');
+    const {data,error}=await supabase().rpc('payroll_self_detail',{p_organization_id:org,p_period_start:liveData.summary.periodStart});
+    if(error!==null||!stillAuthorized())throw new Error('Unavailable');
+    fresh=parsePersonalPayrollDetail(data,org,user,liveData.summary.periodStart);
+    if(fresh.summary.revision!==liveData.summary.revision)throw new Error('Revision changed');
+   }
+   const blob=new Blob([buildPayslipPdf(fresh,backend==='demo')],{type:'application/pdf'});
+   const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(backend==='demo'?'sample-':'')+'nforce-payslip-'+fresh.summary.periodStart+'-r'+fresh.summary.revision+'.pdf';
+   try{document.body.appendChild(a);a.click();}finally{a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+  }catch{setExportError(true);}finally{setExporting(false);}
+ };
  return <View style={{gap:t.space.lg}}>
   <View style={{gap:t.space.xs,paddingHorizontal:t.space.xs}}>
    <Text variant="headline" accessibilityRole="header">{c.title}</Text>
    {identityValid&&identity!==undefined&&<><Text variant="title2" weight="700">{identity.user.name}</Text><Text variant="subhead" color="textSecondary">{identity.organization.name}</Text></>}
    <Text variant="footnote" color="textSecondary">{backend==='demo'?c.demo:c.hint}</Text>
   </View>
+  <Card style={{gap:t.space.md}}>
+   <Text variant="headline" accessibilityRole="header">{l.history}</Text>
+   <Text variant="footnote" color="textSecondary">{l.coverage}</Text>
+   {backend==='demo'||h!==undefined?<View style={{gap:t.space.md}}>
+    <Text variant="label" color="primary">{l.ytd} · 2026</Text>
+    <View style={{flexDirection:width>=700?'row':'column',flexWrap:'wrap',gap:t.space.md}}>
+     <View style={{flexGrow:1,gap:t.space.sm}}><PayslipRow label={c.gross} value={formatPhpCents(h?.grossCents??demoSummary.grossCents)}/><PayslipRow label={c.net} value={formatPhpCents(h?.netCents??demoSummary.netCents)}/></View>
+     <View style={{flexGrow:1,gap:t.space.sm}}><PayslipRow label={c.ee} value={formatPhpCents(h?.employeeContributionCents??demoSummary.employeeContributionCents)}/><PayslipRow label={c.tax} value={formatPhpCents(h?.withholdingCents??demoSummary.withholdingCents)}/></View>
+    </View>
+    <Text variant="footnote" color="textSecondary">{l.periods}: {h?.periodCount??1}</Text>
+    {(h?.periods??[demoSummary]).map(p=><View key={p.periodStart} style={{padding:t.space.md,borderRadius:t.shape.control,backgroundColor:t.colors.fill,gap:t.space.xs}}>
+     <Text variant="subhead" weight="600">{p.periodStart} – {p.periodEnd}</Text>
+     <Text variant="footnote" color="textSecondary">{v.revision} {p.revision}</Text>
+     <Button title={l.view} variant="tonal" onPress={()=>{setDate(p.periodStart);setPeriod(p.periodStart);}}/>
+    </View>)}
+   </View>:<Text variant="footnote" color="textSecondary">{l.unavailable}</Text>}
+  </Card>
   {backend!=='demo'&&<Card style={{gap:t.space.sm}}>
    <Text variant="footnote" color="textSecondary">{c.date}</Text>
    <TextInput accessibilityLabel={c.date} value={date} onChangeText={setDate} placeholder="2026-02-01" maxLength={10} autoCapitalize="none" style={{color:t.colors.text,backgroundColor:t.colors.fill,borderRadius:12,padding:12,minHeight:44}}/>
@@ -78,7 +128,13 @@ export function PersonalPayrollReview() {
      <View style={{flexGrow:1,gap:t.space.xs}}><Text variant="footnote" color="onPrimaryContainer">{v.totalDeductions}</Text><Text variant="headline" color="onPrimaryContainer" tabular>{formatPhpCents((BigInt(data.employeeContributionCents)+BigInt(data.withholdingCents)).toString())}</Text></View>
     </View>
    </Card>
-   <PayrollEvidence detail={detail} grossCents={data.grossCents} periodStart={backend==='demo'?'2026-02-01':liveData?.summary.periodStart} periodEnd={backend==='demo'?'2026-02-28':liveData?.summary.periodEnd} revision={backend==='demo'?1:liveData?.summary.revision} deductions={<Card style={{gap:t.space.md}}>
+   <Card style={{gap:t.space.sm}}>
+    <Text variant="footnote" color="textSecondary">{l.pdfNotice}</Text>
+    <Button title={l.pdf} loading={exporting} disabled={Platform.OS!=='web'||exporting} onPress={()=>void exportPdf()}/>
+    {Platform.OS!=='web'&&<Text variant="footnote" color="textSecondary">{l.webOnly}</Text>}
+    {exportError&&<Text variant="footnote" color="danger">{l.unavailable}</Text>}
+   </Card>
+   <PayrollEvidence key={(user??'demo')+'-'+(org??'demo')+'-'+(liveData?.summary.periodStart??'demo')+'-'+(liveData?.summary.revision??1)} live={liveData} org={org} user={user} detail={detail} grossCents={data.grossCents} periodStart={backend==='demo'?'2026-02-01':liveData?.summary.periodStart} periodEnd={backend==='demo'?'2026-02-28':liveData?.summary.periodEnd} revision={backend==='demo'?1:liveData?.summary.revision} deductions={<Card style={{gap:t.space.md}}>
     <Text variant="headline" accessibilityRole="header">{v.deductions}</Text>
     <PayslipRow label={c.sss} value={formatPhpCents(data.sssEmployeeCents)}/>
     {detail?.sssRegularCents !== null && detail?.sssRegularCents !== undefined&&detail.sssMpfCents !== null && detail.sssMpfCents !== undefined&&<View style={{padding:t.space.md,backgroundColor:t.colors.fill,borderRadius:t.shape.control,gap:t.space.sm}}>
@@ -122,10 +178,33 @@ function PayslipRow({label,value}:{label:string;value:string}) {
   <Text variant="subhead" weight="600" tabular style={{flexShrink:1,maxWidth:'100%'}}>{value}</Text>
  </View>;
 }
-function PayrollEvidence({detail,grossCents,periodStart,periodEnd,revision,deductions}:{detail:typeof fictionalDetail|undefined;grossCents:string;periodStart:string|undefined;periodEnd:string|undefined;revision:number|undefined;deductions:ReactNode}) {
+function PayrollEvidence({detail,grossCents,periodStart,periodEnd,revision,deductions,live,org,user}:{live:PersonalPayrollDetail|undefined;org:string|undefined;user:string|undefined;detail:typeof fictionalDetail|undefined;grossCents:string;periodStart:string|undefined;periodEnd:string|undefined;revision:number|undefined;deductions:ReactNode}) {
  const t=useTheme(),i18n=useI18n(),c=labels[i18n.locale],v=modern[i18n.locale];
  const [open,setOpen]=useState(false);
  const [limit,setLimit]=useState(12);
+ const l=lifecycle[i18n.locale];
+ const [target,setTarget]=useState<number|null>(null);
+ const [reason,setReason]=useState('');
+ const [sending,setSending]=useState(false);
+ const [failed,setFailed]=useState(false);
+ const check=()=>{const current=backendStore.get();return current.auth==='signed_in'&&current.userId===user&&activeWorkspace(current)?.organizationId===org;};
+ const receipts=useQuery({queryKey:['nforce','personal-disputes',user,org,periodStart,revision],enabled:live!==undefined&&org!==undefined&&user!==undefined&&periodStart!==undefined&&revision!==undefined,retry:false,gcTime:0,staleTime:0,refetchOnMount:'always',queryFn:async()=>{
+  if(org===undefined||periodStart===undefined||revision===undefined)throw new Error('Unavailable');
+  const {data,error}=await supabase().rpc('payroll_self_disputes',{p_organization_id:org,p_period_start:periodStart});
+  if(error!==null||!check())throw new Error('Unavailable');
+  return parseDisputeReceipts(data,periodStart,revision);
+ }});
+ const submit=async()=>{
+  if(live===undefined||org===undefined||periodStart===undefined||revision===undefined||target===null||sending||reason.trim().length<10||!check())return;
+  setSending(true);setFailed(false);
+  try{
+   const {data,error}=await supabase().rpc('payroll_self_dispute',{p_organization_id:org,p_period_start:periodStart,p_revision:revision,p_item_index:target,p_reason:reason.trim()});
+   if(error!==null||!check())throw new Error('Unavailable');
+   const r=disputeReceiptSchema.parse(data);
+   if(r.periodStart!==periodStart||r.revision!==revision||r.itemIndex!==target)throw new Error('Scope mismatch');
+   setTarget(null);setReason('');await receipts.refetch();
+  }catch{setFailed(true);}finally{setSending(false);}
+ };
  if(!detail)return null;
  const row=(label:string,value:string)=><PayslipRow key={label} label={label} value={value}/>;
  const money=(x:string|null|undefined)=>(x === null || x === undefined)?c.unknown:formatPhpCents(x);
@@ -187,6 +266,14 @@ function PayrollEvidence({detail,grossCents,periodStart,periodEnd,revision,deduc
        {item.multiplier!==null&&row(v.factor,item.multiplier+'×')}
        {(amount !== null && amount !== undefined)&&row(v.exact,amount+' PHP')}
       </View>
+      {receipts.data?.some(r=>r.itemIndex===index)===true?<Text color="primary" variant="footnote">{l.submitted}</Text>:<Button title={l.dispute} variant="tonal" onPress={()=>{setTarget(index);setReason('');setFailed(false);}}/>}
+      {target===index&&<View style={{gap:t.space.sm}}>
+       <Text variant="footnote" color="textSecondary">{live===undefined?l.demoDispute:l.reason}</Text>
+       <TextInput accessibilityLabel={l.reason} multiline value={reason} onChangeText={setReason} maxLength={500} style={{color:t.colors.text,backgroundColor:t.colors.surface,borderRadius:t.shape.control,padding:t.space.md,minHeight:80}}/>
+       <Button title={l.submit} disabled={live===undefined||reason.trim().length<10||sending} loading={sending} onPress={()=>void submit()}/>
+       <Button title={l.cancel} variant="plain" onPress={()=>{setTarget(null);setReason('');setFailed(false);}}/>
+       {failed&&<Text variant="footnote" color="danger">{l.unavailable}</Text>}
+      </View>}
      </View>;
     })}
     {limit<detail.items.length&&<Button title={v.showMore} variant="plain" onPress={()=>setLimit(x=>x+12)}/>}
@@ -194,3 +281,9 @@ function PayrollEvidence({detail,grossCents,periodStart,periodEnd,revision,deduc
   </Card>
  </View>;
 }
+
+const lifecycle={
+ en:{history:'Payslip history',ytd:'Year-to-date · released accruals',coverage:'Only effective released periods. Not a complete annual tax statement.',periods:'Released periods',view:'View payslip',unavailable:'Unavailable. Refresh and try again.',pdf:'Download confidential PDF',pdfNotice:'Private local copy. Keep it secure; it is not proof of payment.',webOnly:'PDF download is available in the web app.',dispute:'Question this item',submitted:'Dispute submitted',reason:'Describe the issue (10–500 characters). Do not include government ID or bank details.',demoDispute:'Fictional preview. Submission is disabled.',submit:'Submit dispute',cancel:'Cancel'},
+ fil:{history:'Kasaysayan ng payslip',ytd:'Kabuuan sa taon · inilabas na tala',coverage:'Mga inilabas na period lamang. Hindi kumpletong taunang tax statement.',periods:'Mga period',view:'Tingnan ang payslip',unavailable:'Hindi available. Subukan muli.',pdf:'I-download ang pribadong PDF',pdfNotice:'Pribadong kopya. Ingatan ito; hindi patunay ng bayad.',webOnly:'Available ang PDF sa web app.',dispute:'Tanungin ang item na ito',submitted:'Naipasa ang dispute',reason:'Ilarawan ang problema (10–500 karakter). Huwag ilagay ang government ID o bank details.',demoDispute:'Halimbawa lamang. Hindi maaaring mag-submit.',submit:'Isumite ang dispute',cancel:'Kanselahin'},
+ es:{history:'Historial de nómina',ytd:'Acumulado anual · importes publicados',coverage:'Solo períodos efectivos publicados. No es una declaración fiscal anual completa.',periods:'Períodos publicados',view:'Ver nómina',unavailable:'No disponible. Actualice e inténtelo de nuevo.',pdf:'Descargar PDF confidencial',pdfNotice:'Copia local privada. Protéjala; no acredita el pago.',webOnly:'Descarga PDF disponible en la web.',dispute:'Consultar este concepto',submitted:'Reclamación enviada',reason:'Describa el problema (10–500 caracteres). No incluya identificadores oficiales ni datos bancarios.',demoDispute:'Solo ejemplo. Envío deshabilitado.',submit:'Enviar reclamación',cancel:'Cancelar'},
+} as const;
