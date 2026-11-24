@@ -269,3 +269,11 @@ Copy and complete for each meaningful change:
 - Parent #14/#16 core, native JS and Chromium passed with screenshot artifacts; #17 core/database/web passed, remaining acceptance pending. Documented full-month salary limitations, approved leave usage, independent settlement journal, remittance reconciliation, retention/key review before commit. No hosted changes.
 
 - Initial P0.9 database CI 138175134342 passed. Before next commit: add real seven-day monthly-paid fixture with approved leave request/usage and missing/duplicate allocation denial, independently reconcile calendar base and incremental premium using Python Decimal; align agency payable accounts across payroll and receipt journals, prevent omission of approved leave. Revalidate exact head. No production changes.
+
+## 2026-11-24 — P1.0 consolidation
+
+- Before commit: inspected #3–19 lineages and #15/#18 changes. Reuse statutory/cutoff arithmetic without duplicate monetary tables, preserve canonical weekly posting and private gates; add gated original monetary review UI and deterministic tests. Remaining multi-frequency posting, corrections and formal filing explicitly gated. No production changes.
+
+- Before preview commit: Python Decimal verified 93 cent allocations, maternity PHP23000, retirement PHP81000, redundancy PHP90000 and 13th-month PHP19000.84. Explicit fictional demo card uses the same component as live review; headless Chromium exercises the real payroll route and captures phone/desktop screenshots with no external traffic. Live authorization remains separately tested in SQL. No production changes.
+
+- PR #20 job 138177812629 reproduced Payroll card visibility timeout after native JS exports. Actual PR #19 screenshot inspection also showed shell-only captures. Before commit: use explicit fictional demo owner persona and real in-app More → Payroll navigation; wait for a real greeting before Home screenshot and monetary value before Payroll screenshot. No live authorization override or production changes.
