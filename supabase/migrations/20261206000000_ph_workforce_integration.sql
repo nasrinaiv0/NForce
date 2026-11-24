@@ -66,6 +66,9 @@ begin
  if p_calendar->>k is null or p_calendar->>k not in ('ordinary','rest','special','special_rest','regular_holiday','regular_holiday_rest','double_regular','double_regular_rest')
  then raise exception 'missing local calendar coverage' using errcode='22023'; end if;
  end loop;
+ if exists(select 1 from app.ph_workday_evidence e where e.organization_id=p_org and e.user_id=p_user
+ and e.anchor_at < p_anchor+interval '24 hours' and p_anchor < e.anchor_at+interval '24 hours')
+ then raise exception 'overlapping attested workdays require review' using errcode='22023'; end if;
  insert into app.ph_workday_evidence values(p_org,p_period,p_user,p_day,p_anchor,h.effective_on,h.recorded_at,p_calendar,p_reference,auth.uid());
  insert into public.audit_events(organization_id,actor_id,action,entity,entity_id,data)
  values(p_org,auth.uid(),'accounting.ph_workday_attested','membership',p_user::text,jsonb_build_object('workDate',p_day));
