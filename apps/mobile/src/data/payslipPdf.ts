@@ -30,8 +30,23 @@ export function buildPayslipPdf(d:PersonalPayrollDetail,demo=false):string {
   'Method: '+i.method,'Recorded PHP: '+(i.recordedAmount??'Not recorded')+' | Calculated PHP: '+(i.calculatedAmount??'Not recorded')));
  const ascii=(v:string)=>Array.from(v).map(c=>{const n=c.codePointAt(0)??0;return n>=32&&n<=126?c:n===10||n===13||n===9?' ':'[U+'+n.toString(16).toUpperCase()+']';}).join('');
  const escape=(v:string)=>v.replace(/[\\()]/g,c=>'\\'+c);
- const wrapped=lines.flatMap(x=>ascii(x).match(/.{1,88}/g)??['']);
- const pages:string[][]=[];for(let i=0;i<wrapped.length;i+=49)pages.push(wrapped.slice(i,i+49));
+ // Keep a complete evidence record together where it fits; no one-line spill.
+ // 52 lines at 14pt fit within the A4 content area above the footer.
+ const groups:string[][]=[[]];
+ for(const line of lines){
+  if(/^Item \d+ \| /.test(line))groups.push([]);
+  groups[groups.length-1]!.push(line);
+ }
+ const pages:string[][]=[[]];
+ for(const group of groups){
+  const wrapped=group.flatMap(x=>ascii(x).match(/.{1,88}/g)??['']);
+  let page=pages[pages.length-1]!;
+  if(page.length>0&&page.length+wrapped.length>52){page=[];pages.push(page);}
+  for(const line of wrapped){
+   if(page.length>=52){page=[];pages.push(page);}
+   page.push(line);
+  }
+ }
  const objects:string[]=['<< /Type /Catalog /Pages 2 0 R >>','', '<< /Type /Font /Subtype /Type1 /BaseFont /Courier >>'];
  const kids:string[]=[];
  pages.forEach((page,i)=>{
