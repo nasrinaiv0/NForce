@@ -307,3 +307,5 @@ Before commit: parent exact-head checks and actual screenshots reviewed; canonic
 Before commit: exact-head #21/#24 CI, preview and actual captures verified; document private ancillary statutory journals, reviewed receipts, exit payable, historical reconciliation and agency prep packets; preserve canonical ledger, block incomplete integrated compensation. No hosted changes.
 
 - Before fix commit: job 138202666122 failed at unterminated SQL literal. Rebuild approval validator without replacement interpolation; disambiguate aliases, add independent same-receipt race and exact receivable verification. No remote changes.
+
+- Before commit: static inspection of committed race fixture identified single-dollar helper delimiters; restore literal double-dollar delimiters before running the disposable DB race. No hosted changes.
