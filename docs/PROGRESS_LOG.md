@@ -249,3 +249,5 @@ Copy and complete for each meaningful change:
 - Verified PR #13 and #12 exact-head CI. Canonical PH history and exact-second classifications replace duplicate P0.3 schema; enterprise lifecycle and review to be reconciled. Preserve private gates, test both lineages; no remote SQL, merges, paid resources or production changes.
 
 - Exact-head initial CI identified PL/pgSQL CASE-expression parsing at lifecycle attestation. Parenthesized conditional before revalidation. Added isolated browser and native JS export acceptance job (no hosted resources), see P0.6 notes.
+
+- PR #14 exact-head 138168255216: iOS, Android and web JS exports succeeded; Playwright 1.56.1 browser installation failed on ubuntu26.04-x64. Pin isolated acceptance job to ubuntu-24.04 before retry. No remote migrations, merge or production changes.
