@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/Button';
+import { PayrollDisputeDashboard } from '@/components/PayrollDisputeDashboard';
 import { PayrollManagementSummary } from '@/components/PayrollManagementSummary';
 import { AccountingReview } from '@/components/AccountingReview';
 import { PersonalPayrollReview } from '@/components/PersonalPayrollReview';
@@ -109,6 +110,7 @@ function DemoPayrollScreen() {
   return (
     <Screen onRefresh={() => payroll.refetch()} maxWidth={1400}>
       <PayrollManagementSummary fictional snapshot={{organizationId:'fb100000-0000-4000-8000-000000000001',periodStart:'2026-01-12',source:'original-posted-accrual-v1',employeeCount:1,grossCents:'121125',employeeContributionCents:'60000',employerContributionCents:'86000',withholdingCents:'0',exemptCents:'20000',netCents:'61125',employerCostCents:'207125'}} />
+      <PayrollDisputeDashboard demo />
       <View style={styles.rowBetween}>
         <View style={styles.row}>
           <Touchable onPress={() => setPeriod(addDays(p.periodStart, -7))} feedback="highlight" accessibilityLabel={i18n.t('timesheet.prevPeriod')} style={[styles.nav, { backgroundColor: t.colors.fill }]}>

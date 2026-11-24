@@ -6,6 +6,7 @@ import { Button } from '@/components/Button';
 import { Card } from '@/components/Surface';
 import { Text } from '@/components/Text';
 import { formatPhpCents, formatPayslipDecimal, formatPayslipInstant, parsePersonalPayrollDetail, parsePayrollHistory, parseDisputeReceipts, disputeReceiptSchema, type PersonalPayrollDetail } from '@/data/accountingReview';
+import { OwnDisputeStatus } from '@/components/PayrollDisputeDashboard';
 import { buildPayslipPdf } from '@/data/payslipPdf';
 import { liveConfigured, supabase } from '@/data/supabase';
 import { useTheme } from '@/design/theme';
@@ -136,6 +137,7 @@ export function PersonalPayrollReview() {
     {exportError&&<Text variant="footnote" color="danger">{l.unavailable}</Text>}
    </Card>
 {historyCard}
+   <OwnDisputeStatus org={org} user={user} period={liveData?.summary.periodStart}/>
    <PayrollEvidence key={(user??'demo')+'-'+(org??'demo')+'-'+(liveData?.summary.periodStart??'demo')+'-'+(liveData?.summary.revision??1)} live={liveData} org={org} user={user} detail={detail} grossCents={data.grossCents} periodStart={backend==='demo'?'2026-02-01':liveData?.summary.periodStart} periodEnd={backend==='demo'?'2026-02-28':liveData?.summary.periodEnd} revision={backend==='demo'?1:liveData?.summary.revision} deductions={<Card style={{gap:t.space.md}}>
     <Text variant="headline" accessibilityRole="header">{v.deductions}</Text>
     <PayslipRow label={c.sss} value={formatPhpCents(data.sssEmployeeCents)}/>

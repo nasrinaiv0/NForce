@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { PayrollDisputeDashboard } from '@/components/PayrollDisputeDashboard';
 import { PayrollManagementSummary } from '@/components/PayrollManagementSummary';
 import { AccountingReleaseGate } from '@/components/AccountingReleaseGate';
 import { Button } from '@/components/Button';
@@ -75,6 +76,7 @@ export function AccountingReview({ scope, requestedUser }: { scope: AccountingSc
         </View>
       </Card>
       {scope === 'organization' && <PayrollManagementSummary snapshot={money} />}
+      {scope === 'organization' && <PayrollDisputeDashboard key={user+'-'+organization} />}
       {snapshot === undefined ? (
         <>
           <AccountingReleaseGate />
