@@ -232,3 +232,7 @@ Copy and complete for each meaningful change:
 - Validation: exact-head SQL/CI and Vercel pending; no local PostgreSQL/Supabase CLI available in current sandbox. No remote SQL or resource changes.
 
 - Pre-CI review: qualify the premium classification join to avoid duplicate work_date columns; enforce the existing roster seal guard on day-policy inserts. Replacement head to be validated.
+
+## 2026-11-24 — P0.4 candidate
+
+- Parent PR #9 exact-head CI and Vercel green. Documented immutable lifecycle capture, private ingestion, tenant lock protocol and locked correction guard before commit. See P0.4 acceptance notes. No remote SQL or production changes.
