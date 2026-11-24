@@ -28,4 +28,19 @@ for f in "$ROOT"/supabase/tests/*.test.sql; do
   echo "running $(basename "$f")"
   "${PSQL[@]}" -f "$f" 2>&1 | sed -n 's/.*NOTICE:  //p; /ERROR/p'
 done
+
+# P0.3 two-connection contention test. Same throwaway socket only; no remote URL.
+echo "running P0.3 independent-connection contention"
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p0_3_fixture.sql" >/dev/null
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p0_3_race.sql" >"$WORK/race-a.log" 2>&1 & A=$!
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p0_3_race.sql" >"$WORK/race-b.log" 2>&1 & B=$!
+FAIL=0
+wait "$A" || FAIL=1
+wait "$B" || FAIL=1
+cat "$WORK/race-a.log" "$WORK/race-b.log"
+test "$FAIL" -eq 0
+test "$(grep -h -c 'P03_RACE_WIN' "$WORK"/race-*.log | awk '{n+=$1} END{print n}')" -eq 1
+test "$(grep -h -c 'P03_RACE_ALREADY_LOCKED' "$WORK"/race-*.log | awk '{n+=$1} END{print n}')" -eq 1
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p0_3_race_verify.sql"
+
 echo "database tests passed"

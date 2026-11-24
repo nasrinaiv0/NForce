@@ -224,3 +224,9 @@ Copy and complete for each meaningful change:
 - **Status:** Implementation staged; exact-head validation pending. Based on PR #3 7ce31805b417284da51815f36b0fdb56a1063c44. No production change or remote SQL.
 - **Scope:** Sealed historical roster manifest, server punch replay and OT reconciliation, private timesheet submission via existing approval chain, atomic payroll lock with immutable evidence; retain public release gates. See [P0.2 design and acceptance](release/p0-2-accounting.md).
 - **Validation plan:** Disposable SQL fixture and all existing CI, preview build, independent accounting/security review. Known gaps: authoritative roster import/lifecycle, premium pay codes, correction/adjustment policy, native acceptance and contention tests.
+
+## 2026-11-24 — P0.3 historical workforce and payroll policy candidate
+
+- Parent PR #4 exact head 0384bfa8372ae5934536f55c65b3987bc2286d72: CI and Vercel passed. Candidate private only; existing public release gate unchanged.
+- Prepared append-only history, sealed weekly roster automation, premium classification, dual-control adjustment ledger and independent-connection lock regression. Documented design, limitations and acceptance before committing in [P0.3 release notes](release/p0-3-workforce-payroll.md).
+- Validation: exact-head SQL/CI and Vercel pending; no local PostgreSQL/Supabase CLI available in current sandbox. No remote SQL or resource changes.
