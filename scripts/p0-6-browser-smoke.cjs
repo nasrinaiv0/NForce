@@ -112,6 +112,7 @@ const assert = require('node:assert/strict');
       assert.equal(await page.getByText('Language',{exact:true}).count(),0,role+' profile does not contain settings');
       await page.screenshot({path:'/tmp/nforce-browser/screenshots/role-'+role+'-profile.png',fullPage:true});
       await page.getByRole('button',{name:'My payslip',exact:true}).click();
+      await page.getByText('Payslip history',{exact:true}).waitFor({timeout:30000});
       await page.getByText('Payslip detail',{exact:true}).waitFor({timeout:30000});
       await page.getByText('Personal payroll',{exact:true}).first().scrollIntoViewIfNeeded();
       await page.screenshot({path:'/tmp/nforce-browser/screenshots/role-'+role+'-payslip-summary.png',fullPage:true});
@@ -121,6 +122,18 @@ const assert = require('node:assert/strict');
       await page.getByText('Regular work · Overtime',{exact:true}).waitFor({timeout:10000});
       await page.getByText('₱287.67',{exact:true}).last().waitFor({timeout:10000});
       await page.getByText('Regular work · Overtime',{exact:true}).scrollIntoViewIfNeeded();
+      if(role==='staff'){
+        await page.getByRole('button',{name:'Question this item',exact:true}).first().click();
+        await page.getByText('Fictional preview. Submission is disabled.',{exact:true}).waitFor({timeout:10000});
+        assert.ok(await page.getByRole('button',{name:'Submit dispute',exact:true}).isDisabled());
+        await page.getByRole('button',{name:'Cancel',exact:true}).click();
+        const downloadPromise=page.waitForEvent('download');
+        await page.getByRole('button',{name:'Download confidential PDF',exact:true}).click();
+        const download=await downloadPromise;
+        await download.saveAs('/tmp/nforce-browser/screenshots/sample-nforce-payslip.pdf');
+        const pdf=require('node:fs').readFileSync('/tmp/nforce-browser/screenshots/sample-nforce-payslip.pdf','utf8');
+        assert.ok(pdf.startsWith('%PDF-1.4')&&pdf.includes('FICTIONAL SAMPLE')&&pdf.includes('26,542.45')&&!/employer contribution|employer cost/i.test(pdf));
+      }
       await page.screenshot({path:'/tmp/nforce-browser/screenshots/role-'+role+'-payslip.png',fullPage:true});
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2),role+' payslip viewport overflow');
       await page.goBack();
@@ -134,6 +147,21 @@ const assert = require('node:assert/strict');
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2),role+' settings viewport overflow');
       assert.equal(errors.length,0,errors.join('\n'));
       console.log('role '+role+' profile, personal payslip and settings separation passed');
+      await page.close();
+    }
+    for(const [name,width,height,appearance] of [['compact-dark',320,760,'dark'],['tablet-light',768,1024,'light'],['desktop-dark',1440,900,'dark']]){
+      const page=await browser.newPage({viewport:{width,height},locale:'en-US',reducedMotion:'reduce',colorScheme:appearance});
+      await page.route('**/*',async route=>new URL(route.request().url()).origin==='http://127.0.0.1:8765'?route.continue():route.abort());
+      await page.addInitScript(appearance=>localStorage.setItem('nforce.preferences.v2',JSON.stringify({backend:'demo',persona:'staff',locale:'en',appearance,reduceMotion:true})),appearance);
+      await page.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
+      await page.getByText(/Good (morning|afternoon|evening)/i).first().waitFor({timeout:30000});
+      await page.getByText('More',{exact:true}).first().click();
+      await page.getByRole('button',{name:'My profile',exact:true}).click();
+      await page.getByRole('button',{name:'My payslip',exact:true}).click();
+      await page.getByText('Payslip history',{exact:true}).waitFor({timeout:30000});
+      await page.getByText('₱26,542.45',{exact:true}).first().waitFor({timeout:10000});
+      await page.screenshot({path:'/tmp/nforce-browser/screenshots/payslip-'+name+'.png',fullPage:true});
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2),name+' no overflow');
       await page.close();
     }
   } finally { await browser.close(); }

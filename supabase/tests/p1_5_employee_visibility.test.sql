@@ -24,6 +24,18 @@ select pg_temp.expect((select not exists(select 1 from jsonb_array_elements(x->'
 select pg_temp.expect((select x->>'sssRegularCents'='100000' and x->>'sssMpfCents'='50000' and x->>'releasedAt' is not null from personal_detail),'employee SSS split and release time reconcile');
 select pg_temp.expect((select exists(select 1 from jsonb_array_elements(x->'items') i where i->>'code'='REG' and (i->>'calculatedAmount')::numeric=0 and i->>'recordedAmount' is null) from personal_detail),'monthly regular work is not double counted as separate salary');
 select pg_temp.denied($$select public.payroll_self_detail(pg_temp.org9(62),'2026-02-01')$$,'42501','detail cannot bypass workspace release gate');
+-- Scoped lifecycle history, YTD, and idempotent dispute intake.
+select pg_temp.expect((public.payroll_self_history(pg_temp.org9(61),2026)->>'periodCount')::int=1 and public.payroll_self_history(pg_temp.org9(61),2026)->>'netCents'='2654245','own released history and YTD reconcile');
+select pg_temp.expect(public.payroll_self_history(pg_temp.org9(61),2026)->>'coverageComplete'='false','YTD never claims complete annual coverage');
+select pg_temp.denied($$select public.payroll_self_history(pg_temp.org9(62),2026)$$,'42501','history denies unauthorized workspace');
+select pg_temp.denied($$select public.payroll_self_history(pg_temp.org9(61),2025)$$,'22023','unsupported history year denied');
+select pg_temp.denied($$select public.payroll_self_dispute(pg_temp.org9(61),'2026-02-01',2,0,'fictional payroll dispute')$$,'22023','dispute rejects stale revision');
+select pg_temp.denied($$select public.payroll_self_dispute(pg_temp.org9(61),'2026-02-01',1,9999,'fictional payroll dispute')$$,'22023','dispute rejects invalid ordinal');
+select pg_temp.expect(public.payroll_self_dispute(pg_temp.org9(61),'2026-02-01',1,0,'fictional payroll dispute')=public.payroll_self_dispute(pg_temp.org9(61),'2026-02-01',1,0,'fictional payroll dispute'),'identical retry returns same dispute receipt');
+select pg_temp.denied($$select public.payroll_self_dispute(pg_temp.org9(61),'2026-02-01',1,0,'different fictional reason')$$,'23505','duplicate dispute cannot overwrite');
+select pg_temp.expect(jsonb_array_length(public.payroll_self_disputes(pg_temp.org9(61),'2026-02-01'))=1,'employee own dispute list');
+select pg_temp.denied($$select public.payroll_dispute_inbox(pg_temp.org9(61),'2026-02-01')$$,'42501','employee cannot access reviewer inbox');
+select pg_temp.expect(not has_table_privilege('authenticated','app.ph_employee_payroll_dispute','SELECT') and not has_table_privilege('authenticated','app.ph_employee_payroll_dispute','INSERT'),'dispute raw table inaccessible');
 select pg_temp.denied($$select public.payroll_management_snapshot(pg_temp.org9(61),'2026-02-02')$$,'42501','employee organization monetary review denied');
 select pg_temp.denied($$select public.accounting_review_snapshot(pg_temp.org9(61),'2026-02-02','organization')$$,'42501','employee organization attendance denied');
 select pg_temp.denied($$select public.payroll_self_snapshot(pg_temp.org9(62),'2026-02-01')$$,'42501','other workspace without release gate denied');
@@ -31,6 +43,9 @@ reset role;
 select set_config('request.jwt.claim.sub',pg_temp.u(3)::text,true);
 select pg_temp.denied($$select public.payroll_self_snapshot(pg_temp.org9(61),'2026-02-01')$$,'P0001','peer cannot select another employee');
 select pg_temp.denied($$select public.payroll_self_detail(pg_temp.org9(61),'2026-02-01')$$,'P0001','detail cannot reveal peer payroll');
+select pg_temp.expect((public.payroll_self_history(pg_temp.org9(61),2026)->>'periodCount')::int=0,'peer history contains no other employee');
+select pg_temp.denied($$select public.payroll_self_disputes(pg_temp.org9(61),'2026-02-01')$$,'P0001','peer cannot read dispute receipts');
+select pg_temp.denied($$select public.payroll_self_dispute(pg_temp.org9(61),'2026-02-01',1,0,'fictional payroll dispute')$$,'P0001','peer cannot dispute another employee');
 select set_config('request.jwt.claim.sub',pg_temp.u(1)::text,true);
 select pg_temp.denied($$select public.payroll_self_snapshot(pg_temp.org9(61),'2026-02-01')$$,'P0001','manager personal endpoint cannot return subordinate payroll');
 select pg_temp.expect(not has_table_privilege('authenticated','app.ph_employee_payroll_release','INSERT') and not has_table_privilege('authenticated','app.ph_monetary_snapshot','SELECT') and not has_function_privilege('anon','public.payroll_self_snapshot(uuid,date)','EXECUTE'),'release and raw monetary table private');
@@ -50,4 +65,8 @@ insert into app.ph_employee_payroll_release(organization_id,period_start,user_id
 values(pg_temp.org9(61),'2026-02-01',pg_temp.u(2),2,pg_temp.u(1),pg_temp.u(4),'fictional independent replacement release');
 select set_config('request.jwt.claim.sub',pg_temp.u(2)::text,true);
 select pg_temp.expect((public.payroll_self_snapshot(pg_temp.org9(61),'2026-02-01')->>'revision')::int=2 and (public.payroll_self_snapshot(pg_temp.org9(61),'2026-02-01')->>'netCents')='2739245','only newly released effective replacement visible');
+select pg_temp.expect(public.payroll_self_history(pg_temp.org9(61),2026)->>'netCents'='2739245' and (public.payroll_self_history(pg_temp.org9(61),2026)->>'periodCount')::int=1,'YTD excludes reversed original and uses effective replacement once');
+select pg_temp.expect(jsonb_array_length(public.payroll_self_disputes(pg_temp.org9(61),'2026-02-01'))=0,'replacement does not inherit original item dispute');
+select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
+select pg_temp.expect(jsonb_array_length(public.payroll_dispute_inbox(pg_temp.org9(61),'2026-02-01'))=1,'authorized payroll reviewer retains original dispute');
 rollback;
