@@ -251,3 +251,7 @@ Copy and complete for each meaningful change:
 - Exact-head initial CI identified PL/pgSQL CASE-expression parsing at lifecycle attestation. Parenthesized conditional before revalidation. Added isolated browser and native JS export acceptance job (no hosted resources), see P0.6 notes.
 
 - PR #14 exact-head 138168255216: iOS, Android and web JS exports succeeded; Playwright 1.56.1 browser installation failed on ubuntu26.04-x64. Pin isolated acceptance job to ubuntu-24.04 before retry. No remote migrations, merge or production changes.
+
+## 2026-11-24 — P0.7 monetary candidate
+
+- Documented narrow private 2025 weekly attendance-only monetary scope, cumulative withholding, reviewed divisor and contribution bases, balanced immutable accrual and opaque envelope custody before committing. Initial P0.7 database job 138169689445 passed. Python independently reconciled fictional amounts. Restack the newly created candidate directly on PR #14's browser runner fix 93e967f3a6109cefa9dbe5e44bcdd44a21fea2ea using a checked lease; no merge. Revalidate exact head. No remote migration, paid resources or production changes.
