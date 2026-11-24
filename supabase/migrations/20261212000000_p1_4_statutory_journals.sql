@@ -100,7 +100,7 @@ begin
  insert into app.ph_statutory_journal(organization_id,user_id,attestation_id,quote_id,category,event_on,covered_from,covered_to,source_digest,result,lines,debit_total,credit_total,recorded_by)
  values(p_org,p_user,a.id,q.id,v_category,p_day,from_day,to_day,y->>'sourceDigest',j,lines,dt,ct,auth.uid());
  insert into public.audit_events(organization_id,actor_id,action,entity,entity_id,data)
- values(p_org,auth.uid(),'accounting.ph_statutory_journal','attestation',a.id::text,jsonb_build_object('category',category));
+ values(p_org,auth.uid(),'accounting.ph_statutory_journal','attestation',a.id::text,jsonb_build_object('category',v_category));
  return j;
 end $$;
 

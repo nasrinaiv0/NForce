@@ -309,3 +309,5 @@ Before commit: exact-head #21/#24 CI, preview and actual captures verified; docu
 - Before fix commit: job 138202666122 failed at unterminated SQL literal. Rebuild approval validator without replacement interpolation; disambiguate aliases, add independent same-receipt race and exact receivable verification. No remote changes.
 
 - Before commit: static inspection of committed race fixture identified single-dollar helper delimiters; restore literal double-dollar delimiters before running the disposable DB race. No hosted changes.
+
+- Superseded job 138203152291 passed historical and agency packet tests, then found stale category identifier in statutory audit insert. Correct audit reference to v_category before commit; no hosted changes.
