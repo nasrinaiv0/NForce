@@ -90,16 +90,18 @@ select pg_temp.raises($$ select public.submit_request(pg_temp.org(), 'overtime',
 create temp table req (name text primary key, id uuid);
 grant all on req to authenticated;
 insert into req select 'leave', (public.submit_request(pg_temp.org(), 'leave', '{"leaveTypeId":"vacation","start":"2026-12-01","end":"2026-12-03","days":3}')).id;
-insert into req select 'ts', (public.submit_timesheet(pg_temp.org(), '2026-11-16', 2400, 90)).id;
+select pg_temp.raises($$ select public.submit_timesheet(pg_temp.org(), '2026-11-16', 2400, 90) $$, '42501', 'P0 blocks unverified live timesheet submission');
+select pg_temp.raises($$ select public.submit_request(pg_temp.org(), 'timesheet', '{"periodStart":"2026-11-16","minutes":2400,"overtimeMinutes":90}') $$, '42501', 'generic request cannot bypass accounting gate');
 do $$ begin
-  perform pg_temp.expect((select status from public.timesheets where id = (select id from req where name = 'ts')) = 'submitted', 'submit_timesheet moves the sheet to submitted');
+  perform pg_temp.expect((select count(*) from public.timesheets) = 0, 'denied submission leaves no sheet');
+  perform pg_temp.expect((select count(*) from public.approval_requests where kind = 'timesheet') = 0, 'denied submission leaves no request');
 end $$;
 reset role;
 
 -- ---------------------------------------------------------------- notifications
 select pg_temp.act_as(pg_temp.u('sup'));
 do $$ begin
-  perform pg_temp.expect((select count(*) from public.notifications where kind = 'approval_needed') >= 2, 'supervisor is notified of pending steps');
+  perform pg_temp.expect((select count(*) from public.notifications where kind = 'approval_needed') >= 1, 'supervisor is notified of pending steps');
 end $$;
 reset role;
 select pg_temp.act_as(pg_temp.u('staff2'));
@@ -144,23 +146,17 @@ select pg_temp.act_as(pg_temp.u('owner'));
 select pg_temp.raises($$ select public.submit_request(pg_temp.org(), 'day_off', '{"start":"2026-12-24","end":"2026-12-24"}') $$, 'P0001', 'the owner has no approver above them (no self-approval path)');
 reset role;
 
--- ---------------------------------------------------------------- timesheets → payroll lock
+-- ---------------------------------------------------------------- P0 accounting release gate
 select pg_temp.act_as(pg_temp.u('payroll'));
-select pg_temp.raises($$ select public.lock_payroll_period(pg_temp.org(), '2026-11-16') $$, 'P0001', 'payroll cannot lock while a timesheet is not approved');
+select pg_temp.raises($$ select public.lock_payroll_period(pg_temp.org(), '2026-11-16') $$, '42501', 'payroll cannot lock before authoritative reconciliation');
 reset role;
-select pg_temp.act_as(pg_temp.u('mgr'));
-do $$ begin
-  perform public.decide_request((select r.id from public.approval_requests r where r.kind = 'timesheet' limit 1), 'approve');
-  perform pg_temp.expect((select status from public.timesheets limit 1) = 'approved', 'manager final approval updates the timesheet');
-end $$;
+select pg_temp.act_as(pg_temp.u('owner'));
+select pg_temp.raises($$ select public.lock_payroll_period(pg_temp.org(), '2026-11-16') $$, '42501', 'owner cannot bypass accounting release gate');
 reset role;
-select pg_temp.act_as(pg_temp.u('payroll'));
-do $$ begin
-  perform public.lock_payroll_period(pg_temp.org(), '2026-11-16');
-  perform pg_temp.expect((select status from public.timesheets limit 1) = 'locked', 'locking the period locks approved timesheets');
-end $$;
-select pg_temp.raises($$ select public.lock_payroll_period(pg_temp.org(), '2026-11-16') $$, 'P0001', 'a period can only be locked once');
-reset role;
+select pg_temp.expect((select count(*) from public.payroll_periods) = 0, 'denied lock leaves no payroll period');
+-- Privileged historical fixture verifies the existing locked-record protection.
+insert into public.timesheets (organization_id, user_id, period_start, status, worked_minutes)
+values (pg_temp.org(), pg_temp.u('staff'), '2026-11-16', 'locked', 2400);
 select pg_temp.raises($$ update public.timesheets set worked_minutes = 1 $$, '42501', 'locked timesheets are immutable');
 
 -- ---------------------------------------------------------------- role assignment & offboarding

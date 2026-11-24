@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 
@@ -24,8 +23,9 @@ export function supabase(): SupabaseClient {
   if (!liveConfigured) throw new Error('Supabase is not configured.');
   client ??= createClient(SUPABASE_URL, SUPABASE_KEY, {
     auth: {
-      storage: AsyncStorage,
-      persistSession: true,
+      // P0: do not write authentication tokens to unencrypted persistent storage.
+      // Reauthentication is required after restart until secure persistence is reviewed.
+      persistSession: false,
       autoRefreshToken: true,
       // Email confirmation links land on the web app with the session in the URL.
       detectSessionInUrl: Platform.OS === 'web',

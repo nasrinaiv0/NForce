@@ -155,18 +155,9 @@ export function createLiveApi(options: LiveApiOptions): NForceApi {
         await rpc('decide_request', { p_request_id: id, p_decision: decision, p_reason: reason ?? null });
       }),
 
-    timesheetAction: (action, periodStart, reason) =>
-      write(async ({ engine: e }) => {
-        if (action !== 'submit') throw new ApiError('invalid', 'Timesheets are approved from the Approvals inbox.');
-        const sheet = await e.timesheet({ periodStart });
-        await e.timesheetAction(action, periodStart, reason);
-        await rpc('submit_timesheet', {
-          p_organization_id: org,
-          p_period_start: periodStart,
-          p_worked_minutes: sheet.totals.worked,
-          p_overtime_minutes: sheet.totals.overtime,
-        });
-      }),
+    timesheetAction: async () => {
+      throw new ApiError('forbidden', 'Live timesheet submission is temporarily unavailable pending accounting validation.');
+    },
 
     createEmployee: (input) =>
       write(async ({ engine: e, data }) => {
@@ -216,11 +207,9 @@ export function createLiveApi(options: LiveApiOptions): NForceApi {
         await rpc('offboard_member', { p_membership_id: membership(data, id) });
       }),
 
-    lockPayroll: (periodStart) =>
-      write(async ({ engine: e }) => {
-        await e.lockPayroll(periodStart);
-        await rpc('lock_payroll_period', { p_organization_id: org, p_period_start: periodStart });
-      }),
+    lockPayroll: async () => {
+      throw new ApiError('forbidden', 'Live payroll locking is temporarily unavailable pending accounting validation.');
+    },
 
     moveDeal: (id, stage, reason) =>
       write(async ({ engine: e }) => {

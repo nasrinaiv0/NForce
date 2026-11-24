@@ -29,7 +29,7 @@ In the app, open **More → Workspace profile (demo)** to switch between people 
 
 ## Live mode (Supabase)
 
-Without configuration the app runs the built-in demo organization. To use a real workspace:
+Without configuration the app runs the built-in demo organization. Live authentication and the data adapter exist, but live accounting writes are gated pending authoritative reconciliation. **Do not apply migrations to production or use real employee records without explicit release approval.** The following instructions are for an approved, isolated test environment only. See [P0 acceptance](docs/release/p0-acceptance.md).
 
 1. **Database:** apply every file in `supabase/migrations/` to your Supabase project, in name order. Use `supabase db push` with the Supabase CLI, or paste each file into the SQL editor. Do not apply `supabase/tests/local_auth_shim.sql`; it is only for local test runs.
 2. **Auth:** in Supabase → Authentication → URL Configuration, set the Site URL to where the web app runs (for example your Vercel domain), so confirmation and password-reset links come back to the app.
