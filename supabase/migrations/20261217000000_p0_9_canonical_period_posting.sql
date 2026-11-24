@@ -143,10 +143,10 @@ begin
  freq:=o.payload->>'frequency';e:=app.ph_period_end(p_start,freq);
  if e>date '2026-11-24' or (a.payload->>'end')::date is distinct from e or a.payload->>'frequency' is distinct from freq then raise exception 'period or frequency mismatch' using errcode='22023';end if;
  -- Candidate pay date is end of cutoff. Frequency fixed for year; no overlap/gap.
- select count(*) filter(where gross>0)::int,coalesce(sum(taxable),0),coalesce(sum(withholding),0),max(period_end),
- coalesce(bool_or((calculation->>'cumulative')::boolean),false)
- into n,pt,pw,last_end,sticky from app.ph_money_active
- where organization_id=p_org and user_id=p_user and extract(year from pay_month)=2026;
+ select count(*) filter(where m.gross>0)::int,coalesce(sum(m.taxable),0),coalesce(sum(m.withholding),0),max(m.period_end),
+ coalesce(bool_or((m.calculation->>'cumulative')::boolean),false)
+ into n,pt,pw,last_end,sticky from app.ph_money_active m
+ where m.organization_id=p_org and m.user_id=p_user and extract(year from m.pay_month)=2026;
  if p_start is distinct from coalesce(last_end+1,(o.payload->>'firstPeriod')::date) then raise exception 'noncontiguous period history' using errcode='P0001';end if;
  prior:=app.ph_prior_employer_2026(p_org,p_user);
  select * into y from app.ph_benefit_year where organization_id=p_org and user_id=p_user and tax_year=2026;
