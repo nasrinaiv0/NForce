@@ -56,8 +56,8 @@ declare entitlement numeric;
 begin
  if not app.ph_stat_money(p_basic) or not app.ph_stat_money(p_maternity_differential) or not app.ph_stat_money(p_integrated_basic) or not app.ph_stat_money(p_paid)
  or p_eligible is distinct from true or p_ref is null or length(btrim(p_ref)) not between 8 and 300 then raise exception 'reviewed eligible basic salary required' using errcode='22023'; end if;
- -- DOLE LA21-26. Round upward to a cent to avoid understating a statutory minimum.
- entitlement:=ceil((p_basic+p_maternity_differential+p_integrated_basic)*100/12)/100;
+ -- DOLE LA21-26. Round to cents as illustrated in the 2026 advisory.
+ entitlement:=round((p_basic+p_maternity_differential+p_integrated_basic)/12,2);
  return jsonb_build_object('eligibleBasic',p_basic+p_maternity_differential+p_integrated_basic,'minimum',entitlement,'alreadyPaid',p_paid,
  'remaining',greatest(0,entitlement-p_paid),'excessToReview',greatest(0,p_paid-entitlement));
 end $$;
