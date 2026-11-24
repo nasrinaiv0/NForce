@@ -25,11 +25,38 @@ alter table app.ph_money_snapshot add check(
  (extract(year from pay_month)=2025 and frequency='monthly' and period_end is null and pay_date is null and attestation_id is null and exempt=0 and tax_deductible is null)
  or (pay_month between date '2026-01-06' and date '2026-11-24' and period_end is not null and pay_date is not null and pay_date=period_end
  and period_end between pay_month and date '2026-11-24' and frequency in ('daily','weekly','semi-monthly','monthly') and attestation_id is not null and tax_deductible is not null));
+-- Versions share the original snapshot/journal tables, preserving legacy
+-- 2025 inserts as revision 1. Reversal references always target revision 1.
+alter table app.ph_money_snapshot add column revision int not null default 1 check(revision in (1,2));
+alter table app.ph_money_journal add column revision int not null default 1 check(revision in (1,2));
+alter table app.ph_money_reversal_proposal add column original_revision int generated always as (1) stored;
+alter table app.ph_money_reversal_journal add column original_revision int generated always as (1) stored;
+do $$ declare r record;begin
+ for r in select conrelid::regclass t,conname from pg_constraint where contype='f' and
+ (confrelid='app.ph_money_snapshot'::regclass or confrelid='app.ph_money_journal'::regclass)
+ loop execute format('alter table %s drop constraint %I',r.t,r.conname);end loop;
+end $$;
+alter table app.ph_money_journal drop constraint ph_money_journal_pkey;
+alter table app.ph_money_snapshot drop constraint ph_money_snapshot_pkey;
+alter table app.ph_money_snapshot add primary key(organization_id,user_id,pay_month,revision);
+alter table app.ph_money_journal add primary key(organization_id,user_id,pay_month,account_code,revision);
+alter table app.ph_money_journal add foreign key(organization_id,user_id,pay_month,revision) references app.ph_money_snapshot;
+alter table app.ph_money_reversal_proposal add foreign key(organization_id,user_id,pay_month,original_revision) references app.ph_money_snapshot;
+alter table app.ph_money_reversal_journal add foreign key(organization_id,user_id,pay_month,account_code,original_revision) references app.ph_money_journal;
+alter table app.ph_money_snapshot add check(revision=1 or extract(year from pay_month)=2026);
+create view app.ph_money_active with (security_invoker=true) as
+ select s.* from app.ph_money_snapshot s where s.revision=2 or not exists(select 1 from app.ph_money_reversal r
+ where r.organization_id=s.organization_id and r.user_id=s.user_id and r.pay_month=s.pay_month);
+revoke all on app.ph_money_active from public,anon,authenticated,service_role;
+
 create function app.ph_money_attestation_guard() returns trigger language plpgsql set search_path='' as $$
 declare a app.ph_payroll_attestation;
 begin
  if extract(year from new.pay_month)=2026 then
- a:=app.ph_approved_evidence(new.organization_id,new.user_id,'period',new.pay_month);
+ a:=app.ph_approved_evidence(new.organization_id,new.user_id,case when new.revision=2 then 'replay' else 'period' end,new.pay_month);
+ if new.revision=2 and not exists(select 1 from app.ph_money_reversal r join app.ph_money_snapshot x on (x.organization_id,x.user_id,x.pay_month,x.revision)=(r.organization_id,r.user_id,r.pay_month,1)
+ where r.organization_id=new.organization_id and r.user_id=new.user_id and r.pay_month=new.pay_month
+ and x.attestation_id::text=a.payload->>'originalAttestation') then raise exception 'reviewed reversal required for replay' using errcode='P0001';end if;
  if a.id is distinct from new.attestation_id or (a.payload->>'end')::date is distinct from new.period_end
  or a.payload->>'frequency' is distinct from new.frequency then raise exception 'unmatched monetary attestation' using errcode='P0001';end if;
  end if;return new;
@@ -79,11 +106,11 @@ end $$;
 -- a restricted private candidate: ordinary eight-hour covered employees,
 -- genuine monthly-paid only on monthly/semi-monthly, no disputed time,
 -- cross-cutoff overnight allocation, partial monthly salary, or final pay.
-create function app.ph_post_period_2026(p_org uuid,p_user uuid,p_start date)
+create function app.ph_post_period_version_2026(p_org uuid,p_user uuid,p_start date,p_replay boolean)
 returns jsonb language plpgsql set search_path='' as $$
 declare a app.ph_payroll_attestation;o app.ph_payroll_attestation;wa app.ph_payroll_attestation;ca app.ph_payroll_attestation;
  h app.ph_employment_history; first_h app.ph_employment_history;ev app.ph_workday_evidence;z app.accounting_locked_snapshot;
- old app.ph_money_snapshot;y app.ph_benefit_year;b app.ph_benefit_event;
+ old app.ph_money_snapshot;y app.ph_benefit_year;b app.ph_benefit_event;original app.ph_money_snapshot; version_no int;
  freq text;e date;d date;wk date;mon date;alloc date;line jsonb;code text;nonwork jsonb;actual_ids jsonb;
  worked numeric;secs numeric;rate numeric;factor numeric;amount numeric;wage numeric;is_mwe boolean;any_mwe boolean:=false;any_non_mwe boolean:=false;
  basic numeric:=0;premium numeric:=0;qualifying numeric:=0;raw_basic numeric:=0;raw_premium numeric:=0;raw_exempt numeric:=0;
@@ -94,10 +121,23 @@ begin
  perform app.accounting_tenant_lock(p_org);
  if auth.uid() is null or auth.uid()=p_user or not app.has_permission(p_org,'payroll.prepare') or not app.has_permission(p_org,'timesheet.lock') then raise exception 'forbidden' using errcode='42501';end if;
  if p_start is null or p_start not between date '2026-01-06' and date '2026-11-24' then raise exception 'unsupported payroll date' using errcode='22023';end if;
- if exists(select 1 from app.ph_money_reversal r where r.organization_id=p_org and r.user_id=p_user and extract(year from r.pay_month)=2026) then raise exception 'reversed accrual requires reviewed replay' using errcode='P0001';end if;
+ if p_replay is null then raise exception 'posting mode required' using errcode='22023';end if;
+ version_no:=case when p_replay then 2 else 1 end;
+ if p_replay then
+ select * into original from app.ph_money_snapshot where organization_id=p_org and user_id=p_user and pay_month=p_start and revision=1;
+ if not found or not exists(select 1 from app.ph_money_reversal where organization_id=p_org and user_id=p_user and pay_month=p_start)
+ or exists(select 1 from app.ph_money_snapshot where organization_id=p_org and user_id=p_user and pay_month>p_start and extract(year from pay_month)=2026)
+ then raise exception 'only latest reversed original accrual can be replayed' using errcode='P0001';end if;
+ a:=app.ph_approved_evidence(p_org,p_user,'replay',p_start);
+ if a.payload->>'originalAttestation' is distinct from original.attestation_id::text then raise exception 'replay source mismatch' using errcode='P0001';end if;
+ else
  a:=app.ph_approved_evidence(p_org,p_user,'period',p_start);
+ if exists(select 1 from app.ph_money_reversal r where r.organization_id=p_org and r.user_id=p_user and extract(year from r.pay_month)=2026
+ and not exists(select 1 from app.ph_money_snapshot s where (s.organization_id,s.user_id,s.pay_month,s.revision)=(r.organization_id,r.user_id,r.pay_month,2)))
+ then raise exception 'reversed accrual requires reviewed replay' using errcode='P0001';end if;
+ end if;
  if a.maker=auth.uid() then raise exception 'maker cannot post' using errcode='42501';end if;
- select * into old from app.ph_money_snapshot where organization_id=p_org and user_id=p_user and pay_month=p_start;
+ select * into old from app.ph_money_active where organization_id=p_org and user_id=p_user and pay_month=p_start;
  if found then return old.calculation;end if;
  o:=app.ph_approved_evidence(p_org,p_user,'opening','2026-01-01');
  freq:=o.payload->>'frequency';e:=app.ph_period_end(p_start,freq);
@@ -105,7 +145,7 @@ begin
  -- Candidate pay date is end of cutoff. Frequency fixed for year; no overlap/gap.
  select count(*) filter(where gross>0)::int,coalesce(sum(taxable),0),coalesce(sum(withholding),0),max(period_end),
  coalesce(bool_or((calculation->>'cumulative')::boolean),false)
- into n,pt,pw,last_end,sticky from app.ph_money_snapshot
+ into n,pt,pw,last_end,sticky from app.ph_money_active
  where organization_id=p_org and user_id=p_user and extract(year from pay_month)=2026;
  if p_start is distinct from coalesce(last_end+1,(o.payload->>'firstPeriod')::date) then raise exception 'noncontiguous period history' using errcode='P0001';end if;
  prior:=app.ph_prior_employer_2026(p_org,p_user);
@@ -114,7 +154,7 @@ begin
  or o.payload->'benefitOpening' is distinct from jsonb_build_object('through',y.opening_through,'buckets',y.opening_buckets,'other',y.opening_other,'medicalMode',y.medical_mode)
  then raise exception 'reviewed benefit opening mismatch' using errcode='P0001';end if;
  if exists(select 1 from app.ph_benefit_event x where x.organization_id=p_org and x.user_id=p_user and x.tax_year=2026 and x.paid_on<p_start
- and not exists(select 1 from app.ph_money_snapshot m where m.organization_id=p_org and m.user_id=p_user and x.paid_on between m.pay_month and m.period_end))
+ and not exists(select 1 from app.ph_money_active m where m.organization_id=p_org and m.user_id=p_user and x.paid_on between m.pay_month and m.period_end))
  then raise exception 'earlier benefit not reconciled' using errcode='P0001';end if;
  -- Reject minute-only corrections and cross-period spill on either boundary.
  if exists(select 1 from app.accounting_adjustment_proposal q where q.organization_id=p_org and q.user_id=p_user and q.period_start<=e and q.period_start+6>=p_start)
@@ -200,7 +240,7 @@ begin
  alloc:=(ca.payload->>'allocationDate')::date;
  if e<alloc and date_trunc('month',app.ph_period_end(e+1,freq))::date<>mon
  then raise exception 'final monthly cutoff cannot leave contributions unallocated' using errcode='P0001';end if;
- if e>alloc and not exists(select 1 from app.ph_money_snapshot m where m.organization_id=p_org and m.user_id=p_user and m.pay_date=alloc and m.calculation->>'contributionEvidence'=ca.id::text)
+ if e>alloc and not exists(select 1 from app.ph_money_active m where m.organization_id=p_org and m.user_id=p_user and m.pay_date=alloc and m.calculation->>'contributionEvidence'=ca.id::text)
  then raise exception 'monthly contribution allocation missed' using errcode='P0001';end if;
  if e=alloc then
  s:=app.ph_contribution_candidate('sss',(ca.payload->>'sss')::numeric,mon);
@@ -224,26 +264,30 @@ begin
  wt:=(avg_result->>'withholding')::numeric;
  else wt:=app.ph_tax_candidate(taxable,freq,e);end if;
  if gross-ee-wt<0 then raise exception 'insufficient compensation; separate reviewed settlement required' using errcode='P0001';end if;
- calc:=jsonb_build_object('sourceVersion',2,'frequency',freq,'periodStart',p_start,'periodEnd',e,'payDate',e,'basic',basic,'premium',premium,
+ calc:=jsonb_build_object('sourceVersion',2,'revision',version_no,'frequency',freq,'periodStart',p_start,'periodEnd',e,'payDate',e,'basic',basic,'premium',premium,
  'gross',gross,'exempt',exempt,'mweExempt',qualifying+case when any_mwe then hazard else 0 end,'employeeContrib',ee,'employerContrib',er,
  'taxDeductible',ded,'taxable',taxable,'withholding',wt,'net',gross-ee-wt,'employerCost',gross+er,'benefitKeys',actual_ids,
  'sss',s,'philhealth',ph,'pagibig',f,'contributionEvidence',ca.id,'priorEmployer',prior,'cumulative',use_average,'averageEvidence',avg_result,'lines',lines,'attestation',a.id);
  insert into app.ph_money_snapshot(organization_id,user_id,pay_month,gross,employee_contrib,employer_contrib,taxable,withholding,net,employer_cost,calculation,created_by,
- frequency,period_end,pay_date,exempt,tax_deductible,attestation_id)
- values(p_org,p_user,p_start,gross,ee,er,taxable,wt,gross-ee-wt,gross+er,calc,auth.uid(),freq,e,e,exempt,ded,a.id);
- insert into app.ph_money_journal
- select p_org,p_user,p_start,v.code,v.debit,v.credit from (values
+ frequency,period_end,pay_date,exempt,tax_deductible,attestation_id,revision)
+ values(p_org,p_user,p_start,gross,ee,er,taxable,wt,gross-ee-wt,gross+er,calc,auth.uid(),freq,e,e,exempt,ded,a.id,version_no);
+ insert into app.ph_money_journal(organization_id,user_id,pay_month,account_code,debit,credit,revision)
+ select p_org,p_user,p_start,v.code,v.debit,v.credit,version_no from (values
  ('salary_expense',gross,0::numeric),('employer_contribution_expense',er,0),('salary_payable',0,gross-ee-wt),('bir_withholding_payable',0,wt),
  ('sss_regular_payable',0,coalesce((s->>'employeeRegular')::numeric+(s->>'employerRegular')::numeric,0)),
  ('sss_mpf_payable',0,coalesce((s->>'employeeMpf')::numeric+(s->>'employerMpf')::numeric,0)),
  ('sss_ec_payable',0,coalesce((s->>'employerEc')::numeric,0)),('philhealth_payable',0,coalesce((ph->>'total')::numeric,0)),('pagibig_payable',0,coalesce((f->>'total')::numeric,0))
  ) v(code,debit,credit) where v.debit<>0 or v.credit<>0;
- select coalesce(sum(debit-credit),0) into bal from app.ph_money_journal where organization_id=p_org and user_id=p_user and pay_month=p_start;
+ select coalesce(sum(debit-credit),0) into bal from app.ph_money_journal where organization_id=p_org and user_id=p_user and pay_month=p_start and revision=version_no;
  if bal<>0 then raise exception 'unbalanced journal' using errcode='P0001';end if;
  insert into public.audit_events(organization_id,actor_id,action,entity,entity_id,data)
- values(p_org,auth.uid(),'accounting.ph_money_posted','membership',p_user::text,jsonb_build_object('periodStart',p_start,'periodEnd',e,'frequency',freq));
+ values(p_org,auth.uid(),case when p_replay then 'accounting.ph_money_replayed' else 'accounting.ph_money_posted' end,'membership',p_user::text,jsonb_build_object('periodStart',p_start,'periodEnd',e,'frequency',freq));
  return calc;
 end $$;
+create function app.ph_post_period_2026(p_org uuid,p_user uuid,p_start date) returns jsonb
+language sql set search_path='' as $select app.ph_post_period_version_2026(p_org,p_user,p_start,false)$;
+create function app.ph_replay_period_2026(p_org uuid,p_user uuid,p_start date) returns jsonb
+language sql set search_path='' as $select app.ph_post_period_version_2026(p_org,p_user,p_start,true)$;
 -- Protect already posted benefit sets. No late entry is silently ignored.
 create function app.ph_guard_posted_benefit() returns trigger language plpgsql set search_path='' as $$
 begin
@@ -253,4 +297,4 @@ begin
 end $$;
 create trigger p09_posted_benefit before insert on app.ph_benefit_event for each row execute function app.ph_guard_posted_benefit();
 revoke all on function app.ph_money_attestation_guard(),app.ph_period_end(date,text),app.ph_prior_employer_2026(uuid,uuid),
-app.ph_post_period_2026(uuid,uuid,date),app.ph_guard_posted_benefit() from public,anon,authenticated,service_role;
+app.ph_post_period_version_2026(uuid,uuid,date,boolean),app.ph_post_period_2026(uuid,uuid,date),app.ph_replay_period_2026(uuid,uuid,date),app.ph_guard_posted_benefit() from public,anon,authenticated,service_role;
