@@ -108,7 +108,7 @@ function DemoPayrollScreen() {
         </View>
         <Pill label={p.locked ? i18n.t('payroll.locked') : p.ready ? i18n.t('payroll.ready') : i18n.plural('payroll.blocked', p.blockers)} tone={p.locked ? 'primary' : p.ready ? 'success' : 'warning'} icon={p.locked ? 'lock' : undefined} dot={!p.locked} />
       </View>
-      <View style={[styles.kpis, { gap: t.space.md }]}>
+      <View style={[styles.kpis, { gap: t.space.md, flexDirection: isDesktop ? 'row' : 'column' }]}>
         <KpiTile wrapContent label={i18n.t('payroll.employees')} value={i18n.number(p.rows.length)} />
         <KpiTile wrapContent label={i18n.t('payroll.payableHours')} value={formatDuration(p.totals.payableMinutes)} />
         <KpiTile wrapContent label={i18n.t('timesheet.paidEquivalent')} value={formatDuration(p.totals.weightedMinutes)} hint={i18n.t('timesheet.paidEquivalentHint')} />

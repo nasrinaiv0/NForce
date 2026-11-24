@@ -294,3 +294,5 @@ Copy and complete for each meaningful change:
 
 ## 2026-11-24 — PR21 exact-head acceptance and narrow KPI fix
 - Head 2160148f846591919c75e104952672c0690cd2b3: CI 45318709959 all 4 jobs passed, Vercel READY exact preview, artifact 14886243069 downloaded and inspected. Phone Payroll 390x844 visibly ellipsizes Payable hours (687h 5...) and Paid-hour equivalent (693h 5...), and clips OT hint. No failing CI to repair. Before implementation: opt-in wrapping of KPI label/value/hint on Payroll only, no changes to calculation or other consumers; maintain native dynamic type and tabular numbers. Browser regression at 320/390/1440 widths checks real payroll KPI rendered text range bounds and no ellipsis/line clamp, retains existing demo navigation and no-network gate. No new PR, no migration, no merge, no paid resources, no production changes.
+
+- Inspected artifact 14886243069: mobile KPI duration text clipped. Apply single-column mobile layout from #23 on latest checked head; desktop unchanged. No production changes.
