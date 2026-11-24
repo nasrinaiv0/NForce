@@ -102,3 +102,5 @@ See [statutory reconciliation](p1-3-statutory-reconciliation.md) for weekly revi
 
 ## P1.4
 See [statutory journals](p1-4-statutory-journals.md): restricted reviewed accruals and receipts; actual eligibility, integrated compensation and official agency uploads remain gated.
+
+P1.4 restricted final compensation now binds reviewed exempt exit accrual and effective final revision; maternity reconciliation summary distinct from actual coverage/annual close. Independent entitlement, tax, reporting and security signoff remains mandatory.

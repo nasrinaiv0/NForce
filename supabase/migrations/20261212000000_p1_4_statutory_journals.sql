@@ -208,7 +208,7 @@ begin
  then raise exception 'complete reviewed period evidence required' using errcode='22023';end if;
  if a.kind='replay' and (y->>'undispatched' is distinct from 'true' or length(btrim(coalesce(y->>'reason','')))<8 or (y->>'originalAttestation')::uuid is null) then raise exception 'reviewed replacement evidence required' using errcode='22023';end if;
  when 'cutoff_final' then
- if y->>'reason' is distinct from 'termination' or y->>'exitKind' is distinct from 'ordinary_resignation_no_severance' or y->>'undispatched' is distinct from 'true' or y->>'completeExitEntitlements' is distinct from 'true' or y->>'rankAndFileEligible' is distinct from 'true' or not app.ph_stat_money((y->>'available')::numeric) then raise exception 'restricted reviewed final compensation required' using errcode='22023';end if;
+ if y->>'reason' is distinct from 'termination' or (y->>'exitKind' is null or y->>'exitKind' not in ('ordinary_resignation_no_severance','separation','retirement') or (y->>'exitKind' in ('separation','retirement') and (y->>'statutoryAttestationId')::uuid is null)) or y->>'undispatched' is distinct from 'true' or y->>'completeExitEntitlements' is distinct from 'true' or y->>'rankAndFileEligible' is distinct from 'true' or not app.ph_stat_money((y->>'available')::numeric) then raise exception 'restricted reviewed final compensation required' using errcode='22023';end if;
  when 'contribution' then
  if extract(day from a.scope_date)<>1 or (y->>'allocationDate')::date is null or date_trunc('month',(y->>'allocationDate')::date)::date<>a.scope_date
  then raise exception 'monthly contribution allocation date required' using errcode='22023';end if;
@@ -351,4 +351,114 @@ begin
  values(p_org,p_start,p_user,a.maker,auth.uid(),a.id,inverse,j.credit_total,j.debit_total);
  insert into public.audit_events(organization_id,actor_id,action,entity,entity_id,data)
  values(p_org,auth.uid(),'accounting.ph_canonical_reversed','membership',p_user::text,jsonb_build_object('periodStart',p_start));
+end $$;
+
+-- Private reconciliation of the existing effective payroll and ancillary
+-- statutory journals. This is not a new ledger, payment or tax return.
+create function app.ph_statutory_compensation_summary(p_org uuid,p_user uuid,p_year int) returns jsonb
+language plpgsql set search_path='' as $$
+declare g numeric;n numeric;t numeric;w numeric;mp numeric;diff numeric;advance numeric;received numeric;exit_j app.ph_statutory_journal;
+begin
+ perform app.accounting_tenant_lock(p_org);
+ if auth.uid() is null or auth.uid()=p_user or not app.has_permission(p_org,'payroll.prepare') then raise exception 'forbidden' using errcode='42501';end if;
+ if p_year is distinct from 2026 or app.ph_unresolved_reversal(p_org,p_user) then raise exception 'unsupported or unresolved compensation' using errcode='P0001';end if;
+ if exists(select 1 from app.ph_statutory_journal j where j.organization_id=p_org and j.user_id=p_user and extract(year from j.event_on)=p_year
+ and (j.debit_total is distinct from (select sum((x->>'debit')::numeric) from jsonb_array_elements(j.lines)x)
+ or j.credit_total is distinct from (select sum((x->>'credit')::numeric) from jsonb_array_elements(j.lines)x)
+ or j.debit_total<>j.credit_total)) then raise exception 'statutory journal mismatch' using errcode='P0001';end if;
+ select coalesce(sum(gross),0),coalesce(sum(net),0),coalesce(sum(taxable),0),coalesce(sum(withholding),0) into g,n,t,w
+ from app.ph_effective_monetary where organization_id=p_org and user_id=p_user and extract(year from pay_date)=p_year;
+ select coalesce(sum((j.result->>'employeePaid')::numeric),0),coalesce(sum((j.result->>'salaryDifferential')::numeric),0),coalesce(sum((j.result->>'sssAdvance')::numeric),0)
+ into mp,diff,advance from app.ph_statutory_journal j where j.organization_id=p_org and j.user_id=p_user and j.category='maternity_advance' and extract(year from j.event_on)=p_year;
+ select coalesce(sum((j.result->>'amount')::numeric),0) into received from app.ph_statutory_journal j where j.organization_id=p_org and j.user_id=p_user and j.category='sss_reimbursement' and extract(year from j.event_on)=p_year;
+ if mp<>diff+advance or received>advance then raise exception 'maternity amounts do not reconcile' using errcode='P0001';end if;
+ select * into exit_j from app.ph_statutory_journal where organization_id=p_org and user_id=p_user and category in ('separation','retirement') and extract(year from event_on)=p_year;
+ if found and not exists(select 1 from app.ph_effective_monetary m where m.organization_id=p_org and m.user_id=p_user
+ and m.period_start=(exit_j.result->>'finalPeriod')::date and m.revision=(exit_j.result->>'finalRevision')::int
+ and m.pay_date+1=exit_j.covered_from and not exists(select 1 from app.ph_effective_monetary z where z.organization_id=p_org and z.user_id=p_user and z.pay_date>m.pay_date))
+ then raise exception 'exit journal revision mismatch' using errcode='P0001';end if;
+ return jsonb_build_object('taxYear',p_year,'ordinaryGross',g,'ordinaryNetAccrued',n,'ordinaryTaxable',t,'ordinaryWithholding',w,
+ 'maternityEmployeeAlreadyPaid',mp,'maternitySalaryDifferential',diff,'sssAdvanced',advance,'sssReimbursedToEmployer',received,'sssReceivable',advance-received,
+ 'exitCategory',exit_j.category,'exitAttestationId',exit_j.attestation_id,'exitPayableAccrued',coalesce((exit_j.result->>'amount')::numeric,0),
+ 'exitPeriod',exit_j.result->>'finalPeriod','exitRevision',exit_j.result->>'finalRevision',
+ 'maternityCoverageIntegrated',mp=0,'paymentInitiated',false);
+end $$;
+revoke all on function app.ph_statutory_compensation_summary(uuid,uuid,int) from public,anon,authenticated,service_role;
+
+create or replace function app.ph_record_cutoff_final(p_org uuid,p_user uuid,p_start date) returns jsonb
+language plpgsql set search_path='' as $$
+declare a app.ph_payroll_attestation; o app.ph_payroll_attestation; s app.ph_monetary_snapshot; h app.ph_employment_history;
+ t numeric; w numeric; basic numeric; paid numeric; avail numeric; j jsonb; e date; sc jsonb; exit_amount numeric;
+begin
+ perform app.accounting_tenant_lock(p_org);
+ if auth.uid() is null or auth.uid()=p_user or not app.has_permission(p_org,'payroll.prepare') or not app.has_permission(p_org,'timesheet.lock') then raise exception 'forbidden' using errcode='42501';end if;
+ if app.ph_unresolved_reversal(p_org,p_user) then raise exception 'unresolved reversal' using errcode='P0001';end if;
+ a:=app.ph_approved_evidence(p_org,p_user,'cutoff_final',p_start);
+ if a.maker=auth.uid() then raise exception 'independent settlement required' using errcode='42501';end if;
+ o:=app.ph_approved_evidence(p_org,p_user,'cutoff_opening','2026-01-01');
+ select * into s from app.ph_effective_monetary where organization_id=p_org and user_id=p_user and period_start=p_start;
+ if not found or s.frequency not in ('daily','semi-monthly','monthly') or exists(select 1 from app.ph_effective_monetary x where x.organization_id=p_org and x.user_id=p_user and x.period_start>p_start) then raise exception 'latest effective cutoff required' using errcode='P0001';end if;
+
+ e:=s.pay_date;
+ sc:=app.ph_statutory_compensation_summary(p_org,p_user,2026);
+ if (sc->>'maternityEmployeeAlreadyPaid')::numeric<>0 then raise exception 'maternity period coverage and agency reconciliation required' using errcode='P0001';end if;
+ exit_amount:=(sc->>'exitPayableAccrued')::numeric;
+ if a.payload->>'exitKind'='ordinary_resignation_no_severance' then
+ if exit_amount<>0 then raise exception 'ordinary resignation conflicts with statutory exit journal' using errcode='P0001';end if;
+ else
+ if exit_amount<=0 or a.payload->>'exitKind' is distinct from sc->>'exitCategory' or a.payload->>'statutoryAttestationId' is distinct from sc->>'exitAttestationId'
+ or sc->>'exitPeriod' is distinct from p_start::text or (sc->>'exitRevision')::int is distinct from s.revision then raise exception 'exact reviewed statutory exit required' using errcode='P0001';end if;
+ end if;
+ if not exists(select 1 from public.memberships where organization_id=p_org and user_id=p_user and status='ended')
+ or exists(select 1 from app.ph_2316_import where organization_id=p_org and user_id=p_user and tax_year=2026)
+ or o.payload->'certificates' is distinct from '[]'::jsonb
+ or (o.payload->>'previousPeriods')::int<>0 then raise exception 'restricted final termination scope' using errcode='P0001';end if;
+ h:=app.ph_employment_as_of(p_org,p_user,e+1,clock_timestamp());
+ if h.status is distinct from 'separated' or h.effective_on is distinct from e+1 then raise exception 'reviewed separation required' using errcode='P0001';end if;
+ if e+1<((o.payload->>'firstPeriod')::date+interval '1 month')::date
+ or exists(select 1 from generate_series((o.payload->>'firstPeriod')::date,e,interval '1 day') g where not exists(select 1 from app.ph_effective_monetary m where m.organization_id=p_org and m.user_id=p_user and g::date between m.period_start and m.pay_date)) then raise exception 'complete final year coverage required' using errcode='P0001';end if;
+ if exists(select 1 from app.ph_benefit_event x where x.organization_id=p_org and x.user_id=p_user and x.tax_year=2026 and not exists(select 1 from app.ph_effective_monetary m where m.organization_id=p_org and m.user_id=p_user and x.paid_on between m.period_start and m.pay_date and m.evidence->'benefitKeys' ? x.event_key)) then raise exception 'unreconciled benefits' using errcode='P0001';end if;
+ -- All monthly liabilities must be allocated, including the final month;
+ -- otherwise final settlement would silently omit statutory deductions.
+ if exists(select 1 from generate_series(date_trunc('month',(o.payload->>'firstPeriod')::date)::date,date_trunc('month',e)::date,interval '1 month') g
+ where not exists(select 1 from app.ph_payroll_attestation c join app.ph_payroll_attestation_decision d on d.attestation_id=c.id
+ join app.ph_effective_monetary m on m.organization_id=c.organization_id and m.user_id=c.user_id and m.pay_date=(c.payload->>'allocationDate')::date and m.evidence->>'contributionEvidence'=c.id::text
+ where c.organization_id=p_org and c.user_id=p_user and c.kind='contribution' and c.scope_date=g::date and m.pay_date<=e))
+ then raise exception 'unallocated final contributions' using errcode='P0001';end if;
+ select coalesce(sum(m.taxable),0),coalesce(sum(m.withholding),0),coalesce(sum((m.evidence->>'basic')::numeric),0) into t,w,basic from app.ph_effective_monetary m where m.organization_id=p_org and m.user_id=p_user and extract(year from m.pay_date)=2026;
+ select coalesce(sum((x.result->>'gross')::numeric),0) into paid from app.ph_benefit_event x where x.organization_id=p_org and x.user_id=p_user and x.tax_year=2026 and x.request->>'code'='13th_month';
+ if paid<>round(basic/12,2) then raise exception 'thirteenth entitlement requires reconciliation' using errcode='P0001';end if;
+ avail:=(a.payload->>'available')::numeric;
+ if avail>s.net then raise exception 'available final compensation exceeds accrual' using errcode='22023';end if;
+
+ j:=app.ph_annual_adjustment(e,e,'termination',t,0,w,0,avail,a.evidence);
+ if exit_amount>0 then
+ -- Existing exit payable was already journaled. Do not accrue it again.
+ -- Annual adjustment journal still handles only the withholding difference.
+ j:=j||jsonb_build_object('statutoryCompensation',sc,'finalCompensationCandidate',jsonb_build_object(
+ 'ordinaryFinalNetAccrual',s.net,'exemptExitPayableAccrual',exit_amount,'annualRefundAccrual',(j->>'refund')::numeric,
+ 'additionalEmployeeWithholding',(j->>'employeeWithholding')::numeric,
+ 'combinedAccrualCandidate',s.net+exit_amount+(j->>'refund')::numeric-(j->>'employeeWithholding')::numeric,'paymentInitiated',false));
+ end if;
+ insert into app.ph_annual_settlement(organization_id,user_id,tax_year,final_period,attestation_id,result,recorded_by,final_revision)
+ values(p_org,p_user,2026,p_start,a.id,j,auth.uid(),s.revision);
+ insert into public.audit_events(organization_id,actor_id,action,entity,entity_id,data)
+ values(p_org,auth.uid(),'accounting.ph_cutoff_final','membership',p_user::text,jsonb_build_object('period',p_start,'revision',s.revision));
+ return j;
+end $$;
+
+create or replace function app.ph_guard_statutory_final() returns trigger language plpgsql set search_path='' as $$
+declare sc jsonb;a app.ph_payroll_attestation;
+begin
+ perform app.accounting_tenant_lock(new.organization_id);
+ if not exists(select 1 from app.ph_statutory_journal where organization_id=new.organization_id and user_id=new.user_id and category<>'sss_reimbursement') then return new;end if;
+ if exists(select 1 from app.ph_statutory_journal where organization_id=new.organization_id and user_id=new.user_id and category='maternity_advance') then raise exception 'statutory maternity coverage requires integrated reconciliation' using errcode='P0001';end if;
+ sc:=app.ph_statutory_compensation_summary(new.organization_id,new.user_id,new.tax_year);
+ a:=app.ph_approved_evidence(new.organization_id,new.user_id,'cutoff_final',new.final_period);
+ if a.id<>new.attestation_id or new.result->'statutoryCompensation' is distinct from sc
+ or a.payload->>'statutoryAttestationId' is distinct from sc->>'exitAttestationId'
+ or a.payload->>'exitKind' is distinct from sc->>'exitCategory'
+ or sc->>'exitPeriod' is distinct from new.final_period::text or (sc->>'exitRevision')::int is distinct from new.final_revision
+ then raise exception 'exact statutory final reconciliation required' using errcode='P0001';end if;
+ return new;
 end $$;

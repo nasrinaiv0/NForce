@@ -21,7 +21,13 @@ select pg_temp.attest(pg_temp.org9(17),'sss_reimbursement','2026-06-17',jsonb_bu
 select pg_temp.denied($$select app.ph_post_statutory_journal(pg_temp.org9(17),pg_temp.u(2),'2026-06-17','sss_reimbursement')$$,'P0001','over-reimbursement denied');
 select pg_temp.denied($$select app.ph_month_report_totals(pg_temp.org9(17),'2026-03-01')$$,'P0001','incomplete maternity reporting blocked');
 select pg_temp.expect((select sum((x->>'debit')::numeric-(x->>'credit')::numeric)=0 from app.ph_statutory_journal j cross join lateral jsonb_array_elements(j.lines)x where j.organization_id=pg_temp.org9(17) and x->>'account'='sss_maternity_receivable'),'SSS receivable exactly cleared');
+
+select pg_temp.expect((app.ph_statutory_compensation_summary(pg_temp.org9(17),pg_temp.u(2),2026)->>'maternityEmployeeAlreadyPaid')::numeric=93000,'maternity paid separately from ordinary accrual');
+select pg_temp.expect((app.ph_statutory_compensation_summary(pg_temp.org9(17),pg_temp.u(2),2026)->>'sssReceivable')::numeric=0,'employer reimbursement not employee compensation');
+select pg_temp.expect((app.ph_statutory_compensation_summary(pg_temp.org9(17),pg_temp.u(2),2026)->>'ordinaryTaxable')::numeric=27550,'exempt maternity does not increase ordinary taxable');
+select pg_temp.expect((app.ph_statutory_compensation_summary(pg_temp.org9(17),pg_temp.u(2),2026)->>'maternityCoverageIntegrated')::boolean=false,'maternity final close remains gated');
 select set_config('request.jwt.claim.sub',pg_temp.u(3)::text,true);
+select pg_temp.denied($$select app.ph_statutory_compensation_summary(pg_temp.org9(17),pg_temp.u(2),2026)$$,'42501','staff statutory summary denied');
 select pg_temp.denied($$select app.ph_post_statutory_journal(pg_temp.org9(17),pg_temp.u(2),'2026-03-01','statutory_accrual')$$,'42501','staff statutory journal denied');
 select pg_temp.expect(not has_table_privilege('authenticated','app.ph_statutory_journal','SELECT'),'statutory journal private');
 select pg_temp.expect(not has_function_privilege('authenticated','app.ph_post_statutory_journal(uuid,uuid,date,text)','EXECUTE'),'statutory writer private');
