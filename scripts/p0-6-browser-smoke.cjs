@@ -30,13 +30,12 @@ const assert = require('node:assert/strict');
       console.log(name+' isolated web smoke passed');
       await page.getByText('More',{exact:true}).first().click();
       await page.getByText('Payroll',{exact:true}).first().click({timeout:30000});
-      await page.getByText('Monetary payroll review',{exact:true}).waitFor({timeout:30000});
-      await page.getByText('Fictional example only — not real payroll.',{exact:true}).waitFor({timeout:10000});
-      await page.getByText('₱611.25',{exact:true}).waitFor({timeout:10000});
+      await page.getByText(/payable hours/i).first().waitFor({timeout:30000});
+      await page.getByText(/export csv/i).first().waitFor({timeout:10000});
       await page.screenshot({path:'/tmp/nforce-browser/screenshots/'+name+'-payroll.png',fullPage:true});
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2),'payroll viewport overflow');
       assert.equal(errors.length,0,errors.join('\n'));
-      console.log(name+' payroll monetary demo smoke passed');
+      console.log(name+' payroll attendance demo smoke passed');
       await page.close();
     }
   } finally { await browser.close(); }
