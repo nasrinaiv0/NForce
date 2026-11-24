@@ -74,7 +74,7 @@ begin
  or jsonb_typeof(y->'benefitOpening') is distinct from 'object'
  or y->>'completeCurrentYtd' is distinct from 'true'
  then raise exception 'complete reviewed opening required' using errcode='22023';end if;
- when 'period' then
+ when 'period','replay' then
  if (y->>'end')::date is null or (y->>'end')::date<a.scope_date or (y->>'end')::date>date '2026-11-24'
  or y->>'frequency' is null or y->>'frequency' not in ('daily','weekly','semi-monthly','monthly')
  or y->>'coverage' is distinct from 'ordinary-covered-complete'
@@ -86,6 +86,7 @@ begin
  or not app.ph_stat_money((y->>'hazardPay')::numeric)
  or ((y->>'hazardPay')::numeric>0 and length(btrim(coalesce(y->>'hazardEvidence','')))<8)
  then raise exception 'complete reviewed period evidence required' using errcode='22023';end if;
+ if a.kind='replay' and (length(btrim(coalesce(y->>'reason','')))<8 or y->>'undispatched' is distinct from 'true' or y->>'originalAttestation' is null) then raise exception 'reviewed undispatched replay required' using errcode='22023';end if;
  when 'contribution' then
  if extract(day from a.scope_date)<>1 or (y->>'allocationDate')::date is null or date_trunc('month',(y->>'allocationDate')::date)::date<>a.scope_date
  then raise exception 'monthly contribution allocation date required' using errcode='22023';end if;
@@ -95,9 +96,6 @@ begin
  if y->>'reason' is null or y->>'reason' not in ('termination','year_end')
  or not app.ph_stat_money((y->>'available')::numeric) or y->>'completeFinalCompensation' is distinct from 'true'
  then raise exception 'complete reviewed settlement required' using errcode='22023';end if;
- when 'replay' then
- if length(btrim(coalesce(y->>'reason','')))<8 or y->>'undispatched' is distinct from 'true'
- then raise exception 'reviewed undispatched replay evidence required' using errcode='22023';end if;
  end case;
  insert into app.ph_payroll_attestation_decision(attestation_id,organization_id,checker,evidence) values(a.id,p_org,auth.uid(),p_ref);
  insert into public.audit_events(organization_id,actor_id,action,entity,entity_id,data)
