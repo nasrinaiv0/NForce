@@ -56,3 +56,24 @@ export function parsePersonalPayroll(raw: unknown, organization: string, user: s
   if (s.organizationId !== organization || s.userId !== user || s.periodStart !== period) throw new Error('Personal payroll scope mismatch');
   return s;
 }
+
+const exactDecimal = z.string().regex(/^\d{1,20}(?:\.\d{1,40})?$/);
+const evidenceDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const detailItem = z.strictObject({
+ date: evidenceDate.nullable(), code: z.string().regex(/^(?:(?:REG|RD|SH|SH_RD|RH|RH_RD|DH|DH_RD)(?:_OT)?(?:_ND)?|guaranteed_salary|paid_leave|paid_regular_holiday|unpaid_nonwork|monthly_covered|maternity_covered|commission|taxable_allowance|other_taxable|benefit|other_recorded)$/),
+ start: z.string().max(50).nullable(), end: z.string().max(50).nullable(),
+ seconds: exactDecimal.nullable(), hourlyRate: exactDecimal.nullable(), multiplier: exactDecimal.nullable(), recordedAmount: exactDecimal.nullable(),
+ siteReference: z.string().max(160).nullable(),
+ method: z.enum(['monthly_increment','hourly_factor','salary_allocation','recorded_benefit','recorded_amount','period_total_only']),
+});
+const personalDetailSchema = z.strictObject({
+ summary: personalPayrollSchema, frequency: z.enum(['daily','weekly','semi_monthly','monthly']),
+ exemptCents: cents, taxableCents: cents, taxDeductibleCents: cents, basicCents: cents.nullable(), premiumCents: cents.nullable(),
+ items: z.array(detailItem).max(10000), paymentConfirmed: z.literal(false),
+}).refine(d=>BigInt(d.summary.grossCents)===BigInt(d.exemptCents)+BigInt(d.taxableCents)+BigInt(d.taxDeductibleCents) && BigInt(d.taxDeductibleCents)<=BigInt(d.summary.employeeContributionCents) && d.items.every(i=>i.date===null || (i.date>=d.summary.periodStart&&i.date<=d.summary.periodEnd)));
+export type PersonalPayrollDetail = z.infer<typeof personalDetailSchema>;
+export function parsePersonalPayrollDetail(raw: unknown, organization: string, user: string, period: string) {
+ const d=personalDetailSchema.parse(raw);
+ parsePersonalPayroll(d.summary,organization,user,period);
+ return d;
+}
