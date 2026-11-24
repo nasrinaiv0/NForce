@@ -84,3 +84,6 @@ Private restricted 2025 weekly attendance-only monetary candidate, cumulative ar
 
 ## P0.8
 See [P0.8 statutory review](p0-8-statutory.md) for updated 2026 sources, maker-checker, taxable/exempt reconciliation, prior employer custody and annual candidate. Scope limited to ordinary reviewed weekly payroll through 2026-11-24. No certification, real settlement, public enablement or hosted migration.
+
+## P0.9
+See [P0.9 settlement and reporting](p0-9-settlement.md) for source traceability, closed stable monthly salary candidate, approved leave allocation, annual accrual, private internal agency reconciliation and custody retention/key metadata. Actual filing, settlement, partial months, complete leave rules, KMS/destruction and independent review outstanding. No production activation.

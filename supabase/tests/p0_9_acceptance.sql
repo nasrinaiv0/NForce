@@ -1,0 +1,35 @@
+
+-- This file is included inside the P0.8 fixture transaction, after annual settlement.
+select pg_temp.expect((select sum(app.ph_salary_calendar_allocation(30000,g::date))=30000 from generate_series(date '2026-01-01',date '2026-01-31',interval '1 day')g),'31-day salary allocation exact');
+select pg_temp.expect((select sum(app.ph_salary_calendar_allocation(30000,g::date))=30000 from generate_series(date '2026-02-01',date '2026-02-28',interval '1 day')g),'28-day salary allocation exact');
+select pg_temp.expect((select sum(app.ph_salary_calendar_allocation(30000.01,g::date))=30000.01 from generate_series(date '2028-02-01',date '2028-02-29',interval '1 day')g),'29-day cent reconciliation exact');
+select pg_temp.expect((select sum((x->>'debit')::numeric)=sum((x->>'credit')::numeric) and sum((x->>'debit')::numeric)=1000 from jsonb_array_elements(app.ph_annual_journal_lines('{"refund":0,"employeeWithholding":100,"employerAdvance":900,"adjustment":1000}'))x),'annual employer advance journal balanced');
+insert into ev select 'settlement_journal',app.ph_prepare_payroll_evidence(pg_temp.org(),pg_temp.u(2),'settlement_journal','2026-01-12',jsonb_build_object('treatment','reviewed-recoverable-and-payable-accrual','result',(select result from app.ph_annual_settlement)),'fictional reviewed settlement');
+select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
+select app.ph_approve_payroll_evidence(pg_temp.org(),(select id from ev where kind='settlement_journal'),'fictional independent journal check');
+select set_config('request.jwt.claim.sub',pg_temp.u(1)::text,true);
+select app.ph_post_annual_journal(pg_temp.org(),pg_temp.u(2),2026);
+select pg_temp.expect((select debit_total=1000 and credit_total=1000 from app.ph_annual_journal),'annual refund accrual balanced');
+select app.ph_prepare_month_report(pg_temp.org(),'2026-01-01','fictional January completeness review');
+select pg_temp.denied($$select app.ph_review_month_report(pg_temp.org(),'2026-01-01','fictional self check')$$,'42501','report self approval rejected');
+select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
+select app.ph_review_month_report(pg_temp.org(),'2026-01-01','fictional independent report review');
+select pg_temp.expect((select totals->>'sss'='760.00' or (totals->>'sss')::numeric=760 from app.ph_month_report),'SSS report uses employee employer EC amounts');
+select pg_temp.expect((select (totals->>'philhealth')::numeric=500 and (totals->>'pagibig')::numeric=200 and (totals->>'bir')::numeric=0 from app.ph_month_report),'other agency amounts reconcile no refund offset');
+select set_config('request.jwt.claim.sub',pg_temp.u(1)::text,true);
+select app.ph_record_remittance_receipt(pg_temp.org(),'2026-01-01','sss','fictional-PRN-001','2026-02-01',400,'fictional bank receipt');
+select app.ph_record_remittance_receipt(pg_temp.org(),'2026-01-01','sss','fictional-PRN-002','2026-02-02',361,'fictional excessive receipt');
+select pg_temp.denied($$select app.ph_review_remittance_receipt(pg_temp.org(),'sss','fictional-PRN-001')$$,'42501','receipt self approval denied');
+select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
+select app.ph_review_remittance_receipt(pg_temp.org(),'sss','fictional-PRN-001');
+select pg_temp.denied($$select app.ph_review_remittance_receipt(pg_temp.org(),'sss','fictional-PRN-002')$$,'P0001','overremittance requires separate reconciliation');
+select pg_temp.expect((select debit_total=400 and credit_total=400 from app.ph_remittance_journal),'receipt journal balanced');
+select set_config('request.jwt.claim.sub',pg_temp.u(1)::text,true);
+select app.ph_stage_key_rotation(pg_temp.org(),(select id from cert),'fictional-key-v2',decode(repeat('cd',64),'hex'));
+select pg_temp.expect((app.ph_get_reviewed_envelope(pg_temp.org(),(select id from cert))->>'version')::int=0,'unreviewed key not selected');
+select pg_temp.denied($$select app.ph_review_key_rotation(pg_temp.org(),(select id from cert),1,'fictional self check')$$,'42501','key rotation self review denied');
+select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
+select app.ph_review_key_rotation(pg_temp.org(),(select id from cert),1,'fictional independent decrypted hash check');
+select pg_temp.expect((app.ph_get_reviewed_envelope(pg_temp.org(),(select id from cert))->>'version')::int=1,'reviewed key version selected');
+select pg_temp.expect(not has_function_privilege('authenticated','app.ph_review_remittance_receipt(uuid,text,text)','EXECUTE'),'private remittance review');
+select pg_temp.expect(not has_table_privilege('authenticated','app.ph_custody_key_version','SELECT'),'private rotated ciphertext');

@@ -30,6 +30,12 @@ select pg_temp.expect(not has_function_privilege('authenticated','app.ph_approve
 select pg_temp.expect(not has_function_privilege('authenticated','app.ph_get_reviewed_envelope(uuid,uuid)','EXECUTE'),'envelope retrieval stays private');
 select pg_temp.expect((app.ph_prior_employer_2026(pg_temp.org(),pg_temp.u(2))->>'taxable')::numeric=10000,'prior employer own taxable fields reconciled');
 select pg_temp.expect((app.ph_prior_employer_2026(pg_temp.org(),pg_temp.u(2))->>'withheld')::numeric=1000,'prior employer own withheld fields reconciled');
+select pg_temp.denied($$select app.ph_get_reviewed_envelope(pg_temp.org(),(select id from cert))$$,'42501','missing retention evidence denies retrieval');
+insert into ev select 'custody_policy',app.ph_prepare_payroll_evidence(pg_temp.org(),pg_temp.u(2),'custody_policy','2026-01-12',jsonb_build_object('importId',(select id from cert),'retainUntil','2030-12-31','legalHold',false),'fictional retention review');
+select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
+select app.ph_approve_payroll_evidence(pg_temp.org(),(select id from ev where kind='custody_policy'),'fictional independent retention check');
+select set_config('request.jwt.claim.sub',pg_temp.u(1)::text,true);
+select app.ph_register_custody_policy(pg_temp.org(),(select id from cert),'2026-01-12');
 select pg_temp.expect((app.ph_get_reviewed_envelope(pg_temp.org(),(select id from cert))->>'plaintextSha256')=repeat('a',64),'reviewed private custody retrieval');
 select public.offboard_member((select id from public.memberships where organization_id=pg_temp.org() and user_id=pg_temp.u(2)));
 insert into ev select 'annual',app.ph_prepare_payroll_evidence(pg_temp.org(),pg_temp.u(2),'annual','2026-01-12','{"reason":"termination","available":0}','fictional final employment review');
@@ -39,4 +45,5 @@ select set_config('request.jwt.claim.sub',pg_temp.u(1)::text,true);
 select pg_temp.expect((app.ph_record_annual_settlement_2026(pg_temp.org(),pg_temp.u(2),'2026-01-12')->>'refund')::numeric=1000,'annual settlement uses verified prior withholding');
 select pg_temp.expect((select count(*)=1 from app.ph_annual_settlement),'annual settlement persisted once');
 select pg_temp.denied($$update app.ph_annual_settlement set result='{}'$$,'42501','annual settlement immutable');
+\ir p0_9_acceptance.sql
 rollback;
