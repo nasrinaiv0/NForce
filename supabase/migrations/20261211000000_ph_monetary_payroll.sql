@@ -84,7 +84,9 @@ begin
  if p_month is null or p_month not between date '2025-01-01' and date '2025-11-01' or extract(day from p_month)<>1
  or p_basic is null or p_basic<=0 or p_basic>1000000000 or p_basic<>round(p_basic,2)
  or p_premium is null or p_premium<0 or p_premium>1000000000 or p_premium<>round(p_premium,2)
- or p_cumulative is null or p_prior_taxable is null or p_prior_taxable<0 or p_prior_withheld is null or p_prior_withheld<0
+ or p_cumulative is null or p_prior_taxable is null or p_prior_taxable<0 or p_prior_taxable>1000000000 or p_prior_taxable<>round(p_prior_taxable,2)
+ or p_prior_withheld is null or p_prior_withheld<0 or p_prior_withheld>1000000000 or p_prior_withheld<>round(p_prior_withheld,2)
+ or p_periods is null or p_periods not between 1 and 12
  then raise exception 'unsupported monetary inputs' using errcode='22023'; end if;
  gross:=p_basic+p_premium;
  if p_sss is distinct from gross or p_ph is distinct from p_basic or p_hdmf is distinct from p_basic then raise exception 'agency bases do not reconcile to supported pay scope' using errcode='P0001'; end if;
@@ -127,6 +129,9 @@ begin
  rate:=app.ph_monthly_hourly(h.rate_php,c.annual_divisor,extract(year from p_month)::int);
  if rate*8<=c.minimum_daily_wage then raise exception 'MWE/underpayment review required' using errcode='P0001'; end if;
  last_day:=(p_month+interval '1 month - 1 day')::date;
+ if exists(select 1 from app.ph_money_snapshot z join app.ph_month_context x using(organization_id,user_id,pay_month)
+ where z.organization_id=p_org and z.user_id=p_user and (z.pay_month>p_month or x.current_start<>c.current_start))
+ then raise exception 'out of order month or changed employment start' using errcode='P0001'; end if;
  if exists(select 1 from app.accounting_adjustment_proposal a where a.organization_id=p_org and a.user_id=p_user and a.period_start<=last_day and a.period_start+7>=p_month)
  then raise exception 'adjustment requires monetary reconciliation' using errcode='P0001'; end if;
  -- No cross-month workday spill in this limited candidate; reject both directions.
@@ -202,3 +207,25 @@ end $$;
 revoke all on function app.ph_prepare_month(uuid,uuid,date,date,numeric,numeric,numeric,numeric,numeric,text),
 app.ph_review_month(uuid,uuid,date,text),app.ph_month_amounts(numeric,numeric,date,numeric,numeric,numeric,numeric,numeric,int,boolean),
 app.ph_post_month(uuid,uuid,date) from public,anon,authenticated,service_role;
+
+-- A new previous-employer certificate after a posted month changes cumulative tax.
+-- Until reviewed reversal/replay exists, reject such changes rather than rewrite history.
+create function app.ph_guard_2316_after_post() returns trigger
+language plpgsql set search_path='' as $$
+declare i app.ph_2316_import;
+begin
+ if tg_table_name='ph_2316_import' then
+  if exists(select 1 from app.ph_money_snapshot s where s.organization_id=new.organization_id and s.user_id=new.user_id and extract(year from s.pay_month)=new.tax_year)
+  then raise exception 'posted tax year requires reviewed correction' using errcode='42501'; end if;
+ else
+  select * into i from app.ph_2316_import where id=new.import_id;
+  if not found then raise exception 'missing certificate' using errcode='P0001'; end if;
+  perform app.accounting_tenant_lock(i.organization_id);
+  if exists(select 1 from app.ph_money_snapshot s where s.organization_id=i.organization_id and s.user_id=i.user_id and extract(year from s.pay_month)=i.tax_year)
+  then raise exception 'posted tax year requires reviewed correction' using errcode='42501'; end if;
+ end if;
+ return new;
+end $$;
+create trigger ph_2316_post_guard before insert on app.ph_2316_import for each row execute function app.ph_guard_2316_after_post();
+create trigger ph_2316_review_post_guard before insert on app.ph_2316_review for each row execute function app.ph_guard_2316_after_post();
+revoke all on function app.ph_guard_2316_after_post() from public,anon,authenticated,service_role;
