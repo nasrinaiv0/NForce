@@ -98,10 +98,10 @@ reset role;
 -- Enable fictional review gate to distinguish authorization from absent data.
 insert into app.accounting_review_access(organization_id,evidence_reference,enabled_by,expires_at) values(pg_temp.org(),'fictional independent review',pg_temp.u('owner'),now()+interval '1 day');
 select pg_temp.act_as(pg_temp.u('payroll'));
-select pg_temp.raises($select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$,'P0001','payroll passes role gate but absent monetary data remains blocked');
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'P0001','payroll passes role gate but absent monetary data remains blocked');
 reset role;
 select pg_temp.act_as(pg_temp.u('owner'));
-select pg_temp.raises($select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$,'P0001','owner passes role gate but absent monetary data remains blocked');
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'P0001','owner passes role gate but absent monetary data remains blocked');
 reset role;
 select pg_temp.act_as(pg_temp.u('staff'));
 select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','staff cannot access management payroll');
