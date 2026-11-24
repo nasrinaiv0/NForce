@@ -90,3 +90,6 @@ See [P0.9 settlement and reporting](p0-9-settlement.md) for source traceability,
 
 ## P1.0 consolidation
 See [P1.0](p1-0-consolidation.md) for imported statutory arithmetic, current source traceability, quote-only daily/semi-monthly and reviewed monetary UI. Full payment, eligibility, government filing and legal certification remain outstanding.
+
+## P1.1
+See [P1.1 canonical cutoffs](p1-1-cutoffs.md) for statutory evidence, restricted cutoff posting and reversal scope. No actual filing, settlement, legal certification or production activation.
