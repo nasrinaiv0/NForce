@@ -58,4 +58,25 @@ test "$FAIL" -eq 0
 # Replay the identical event key without consuming the exemption again.
 "${PSQL[@]}" -v benefit_key=benefit-race-a -f "$ROOT/supabase/tests/ph_benefit_race.sql" >/dev/null
 "${PSQL[@]}" -f "$ROOT/supabase/tests/ph_benefit_race_verify.sql"
+# P0.4 independent tenant regression.
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p0_4_hold.sql" >"$WORK/p04-hold.log" 2>&1 & H=$!
+READY=0
+for i in $(seq 1 40); do
+  if grep -q P04_LOCK_HELD "$WORK/p04-hold.log"; then READY=1; break; fi
+  sleep 0.1
+done
+test "$READY" -eq 1
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p0_4_tenant_race.sql"
+wait "$H"
+# Concurrent monetary postings use committed fictional monthly source fixtures.
+"${PSQL[@]}" -1 -f "$ROOT/supabase/tests/ph_month_fixture.sql" >/dev/null
+"${PSQL[@]}" -f "$ROOT/supabase/tests/ph_money_race.sql" >"$WORK/money-a.log" 2>&1 & A=$!
+"${PSQL[@]}" -f "$ROOT/supabase/tests/ph_money_race.sql" >"$WORK/money-b.log" 2>&1 & B=$!
+FAIL=0
+wait "$A" || FAIL=1
+wait "$B" || FAIL=1
+cat "$WORK/money-a.log" "$WORK/money-b.log"
+test "$FAIL" -eq 0
+test "$(grep -h -c 'PH_MONEY_POST_OK' "$WORK"/money-*.log | awk '{n+=$1} END{print n}')" -eq 2
+"${PSQL[@]}" -f "$ROOT/supabase/tests/ph_money_race_verify.sql"
 echo "database tests passed"

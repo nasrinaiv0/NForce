@@ -28,6 +28,8 @@ jobs:
       - run: npm run lint
       - name: Core tests with coverage thresholds
         run: npm run test:coverage -w @nforce/core
+      - name: Form 2316 custody cryptography
+        run: node --test scripts/ph-2316-custody.test.mjs
       - name: App tests
         run: npm run test -w @nforce/mobile
 
