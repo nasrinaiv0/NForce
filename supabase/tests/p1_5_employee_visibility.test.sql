@@ -17,12 +17,18 @@ set local role authenticated;
 create temp table personal_result as select public.payroll_self_snapshot(pg_temp.org9(61),'2026-02-01') as x;
 select pg_temp.expect((select x->>'userId'=pg_temp.u(2)::text and x->>'employeeContributionCents'='245000' and x->>'netCents'='2654245' and (x->>'sssEmployeeCents')::numeric+(x->>'philhealthEmployeeCents')::numeric+(x->>'pagibigEmployeeCents')::numeric=245000 from personal_result),'employee own deductions reconcile');
 select pg_temp.expect((select array(select key from jsonb_object_keys(x) key order by key)=array['employeeContributionCents','grossCents','netCents','organizationId','pagibigEmployeeCents','periodEnd','periodStart','philhealthEmployeeCents','revision','source','sssEmployeeCents','userId','withholdingCents'] from personal_result),'employee exact allowlist excludes employer contributions and costs');
+create temp table personal_detail as select public.payroll_self_detail(pg_temp.org9(61),'2026-02-01') as x;
+select pg_temp.expect((select x->'summary'=(select x from personal_result) and x->>'frequency'='monthly' and x->>'basicCents'='3000000' and x->>'taxableCents'='2755000' and x->>'paymentConfirmed'='false' from personal_detail),'detailed payslip matches released summary and taxable amount');
+select pg_temp.expect((select jsonb_array_length(x->'items')=28 and exists(select 1 from jsonb_array_elements(x->'items') i where i->>'code'='REG' and i->>'seconds'='28800' and i->>'siteReference'='fictional-site') from personal_detail),'payslip includes sealed historical worksite and duration');
+select pg_temp.expect((select not exists(select 1 from jsonb_array_elements(x->'items') i where exists(select 1 from jsonb_object_keys(i) k where k not in ('date','code','start','end','seconds','hourlyRate','multiplier','recordedAmount','siteReference','method'))) from personal_detail),'nested payslip item allowlist excludes private evidence');
+select pg_temp.denied($$select public.payroll_self_detail(pg_temp.org9(62),'2026-02-01')$$,'42501','detail cannot bypass workspace release gate');
 select pg_temp.denied($$select public.payroll_management_snapshot(pg_temp.org9(61),'2026-02-02')$$,'42501','employee organization monetary review denied');
 select pg_temp.denied($$select public.accounting_review_snapshot(pg_temp.org9(61),'2026-02-02','organization')$$,'42501','employee organization attendance denied');
 select pg_temp.denied($$select public.payroll_self_snapshot(pg_temp.org9(62),'2026-02-01')$$,'42501','other workspace without release gate denied');
 reset role;
 select set_config('request.jwt.claim.sub',pg_temp.u(3)::text,true);
 select pg_temp.denied($$select public.payroll_self_snapshot(pg_temp.org9(61),'2026-02-01')$$,'P0001','peer cannot select another employee');
+select pg_temp.denied($$select public.payroll_self_detail(pg_temp.org9(61),'2026-02-01')$$,'P0001','detail cannot reveal peer payroll');
 select set_config('request.jwt.claim.sub',pg_temp.u(1)::text,true);
 select pg_temp.denied($$select public.payroll_self_snapshot(pg_temp.org9(61),'2026-02-01')$$,'P0001','manager personal endpoint cannot return subordinate payroll');
 select pg_temp.expect(not has_table_privilege('authenticated','app.ph_employee_payroll_release','INSERT') and not has_table_privilege('authenticated','app.ph_monetary_snapshot','SELECT') and not has_function_privilege('anon','public.payroll_self_snapshot(uuid,date)','EXECUTE'),'release and raw monetary table private');
@@ -36,6 +42,7 @@ select pg_temp.attest(pg_temp.org9(61),'replay','2026-02-01',(select a.payload||
 select app.ph_replay_cutoff_2026(pg_temp.org9(61),pg_temp.u(2),'2026-02-01');
 select set_config('request.jwt.claim.sub',pg_temp.u(2)::text,true);
 select pg_temp.denied($$select public.payroll_self_snapshot(pg_temp.org9(61),'2026-02-01')$$,'P0001','replacement needs separate release');
+select pg_temp.denied($$select public.payroll_self_detail(pg_temp.org9(61),'2026-02-01')$$,'P0001','detail requires release of replacement revision');
 select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
 insert into app.ph_employee_payroll_release(organization_id,period_start,user_id,revision,prepared_by,reviewed_by,evidence_reference)
 values(pg_temp.org9(61),'2026-02-01',pg_temp.u(2),2,pg_temp.u(1),pg_temp.u(4),'fictional independent replacement release');

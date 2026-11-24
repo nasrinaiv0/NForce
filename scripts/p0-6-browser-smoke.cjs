@@ -104,6 +104,25 @@ const assert = require('node:assert/strict');
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2),role+' viewport overflow');
       assert.equal(errors.length,0,errors.join('\n'));
       console.log('role '+role+' payroll visibility passed');
+      await page.getByText('More',{exact:true}).first().click();
+      await page.getByRole('button',{name:'My profile',exact:true}).click();
+      await page.getByRole('button',{name:'My employee record',exact:true}).waitFor({timeout:30000});
+      assert.equal(await page.getByText('Language',{exact:true}).count(),0,role+' profile does not contain settings');
+      await page.screenshot({path:'/tmp/nforce-browser/screenshots/role-'+role+'-profile.png',fullPage:true});
+      await page.getByRole('button',{name:'My payslip',exact:true}).click();
+      await page.getByText('Payslip detail',{exact:true}).waitFor({timeout:30000});
+      await page.getByRole('button',{name:'Show work and earnings evidence',exact:true}).click();
+      await page.getByText('Fictional office',{exact:true}).waitFor({timeout:10000});
+      assert.equal(await page.getByText(/employer contribution|employer cost/i).count(),0,role+' own payslip');
+      await page.screenshot({path:'/tmp/nforce-browser/screenshots/role-'+role+'-payslip.png',fullPage:true});
+      await page.getByText('More',{exact:true}).first().click();
+      await page.getByRole('button',{name:'Settings',exact:true}).click();
+      await page.getByText('Language',{exact:true}).waitFor({timeout:30000});
+      assert.equal(await page.getByRole('button',{name:'My employee record',exact:true}).count(),0,role+' settings does not contain profile records');
+      await page.screenshot({path:'/tmp/nforce-browser/screenshots/role-'+role+'-settings.png',fullPage:true});
+      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2),role+' settings viewport overflow');
+      assert.equal(errors.length,0,errors.join('\n'));
+      console.log('role '+role+' profile, personal payslip and settings separation passed');
       await page.close();
     }
   } finally { await browser.close(); }

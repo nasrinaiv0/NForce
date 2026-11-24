@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseAccountingSnapshot, parsePersonalPayroll } from '@/data/accountingReview';
+import { parseAccountingSnapshot, parsePersonalPayroll, parsePersonalPayrollDetail } from '@/data/accountingReview';
 
 const org = 'fb100000-0000-4000-8000-000000000001';
 const snapshot = { organizationId: org, periodStart: '2025-01-06', scope: 'self', source: 'locked-original-ph-v4', employeeCount: 1, workedSeconds: '32400.125', overtimeSeconds: '3600.125', lines: [{ code: 'RH_ND', seconds: '25200' }, { code: 'RH', seconds: '3600' }, { code: 'RH_OT', seconds: '3600.125' }] };
@@ -32,5 +32,19 @@ describe('personal payroll response allowlist',()=>{
   expect(()=>parsePersonalPayroll(personal,'other',employee,'2026-02-01')).toThrow();
   expect(()=>parsePersonalPayroll(personal,org,employee,'2026-02-02')).toThrow();
   expect(()=>parsePersonalPayroll({...personal,sssEmployeeCents:'1'},org,employee,'2026-02-01')).toThrow();
+ });
+});
+
+const personalDetail={summary:personal,frequency:'monthly',exemptCents:'0',taxableCents:'2755000',taxDeductibleCents:'245000',basicCents:'3000000',premiumCents:'0',paymentConfirmed:false,items:[{date:'2026-02-02',code:'REG',start:null,end:null,seconds:'28800',hourlyRate:'123.2876712328767123',multiplier:'1',recordedAmount:null,siteReference:'fictional-site',method:'monthly_increment'}]};
+describe('personal payroll detailed contract',()=>{
+ it('accepts verified period evidence without inventing payment',()=>expect(parsePersonalPayrollDetail(personalDetail,org,employee,'2026-02-01').items[0]?.seconds).toBe('28800'));
+ it('rejects additional sensitive fields even inside a line',()=>{
+   expect(()=>parsePersonalPayrollDetail({...personalDetail,items:[{...personalDetail.items[0],employerCost:'1000'}]},org,employee,'2026-02-01')).toThrow();
+   expect(()=>parsePersonalPayrollDetail({...personalDetail,rawEvidence:{}},org,employee,'2026-02-01')).toThrow();
+ });
+ it('rejects false payment, wrong tax and out-of-period evidence',()=>{
+   expect(()=>parsePersonalPayrollDetail({...personalDetail,paymentConfirmed:true},org,employee,'2026-02-01')).toThrow();
+   expect(()=>parsePersonalPayrollDetail({...personalDetail,taxableCents:'1'},org,employee,'2026-02-01')).toThrow();
+   expect(()=>parsePersonalPayrollDetail({...personalDetail,items:[{...personalDetail.items[0],date:'2026-03-01'}]},org,employee,'2026-02-01')).toThrow();
  });
 });
