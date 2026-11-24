@@ -12,11 +12,11 @@ do $$ declare r record; n int:=0; begin
  ('regular_holiday_rest',2.6,3.38,2.86,3.718),
  ('double_regular',3,3.9,3.3,4.29),
  ('double_regular_rest',3.9,5.07,4.29,5.577)
- ) v(kind,base,ot,nd,both) loop
+ ) v(kind,base,ot,nd,combined_rate) loop
  perform pg_temp.expect(app.ph_premium_factor(r.kind,false,false)=r.base,r.kind||' ordinary');
  perform pg_temp.expect(app.ph_premium_factor(r.kind,true,false)=r.ot,r.kind||' OT');
  perform pg_temp.expect(app.ph_premium_factor(r.kind,false,true)=r.nd,r.kind||' ND');
- perform pg_temp.expect(app.ph_premium_factor(r.kind,true,true)=r.both,r.kind||' OT+ND');
+ perform pg_temp.expect(app.ph_premium_factor(r.kind,true,true)=r.combined_rate,r.kind||' OT+ND');
  n:=n+4;
  end loop; raise notice '% exact premium factor cases passed',n;
 end $$;
