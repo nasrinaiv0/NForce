@@ -218,3 +218,9 @@ Copy and complete for each meaningful change:
 - **Validation plan:** Run existing CI, SQL denial assertions, browser and device acceptance with fictional tenants. Native secure persistence, historical roster/pay policy, server reconciliation, branch protection and independent review remain release gates. See [P0 acceptance plan](release/p0-acceptance.md).
 
 - **CI iteration:** initial head `4c49eda9` applied the disposable migrations but failed the SQL test parser at workforce_access.test.sql:93. Corrected dollar-quoted test delimiters. Replacement-head CI pending; no remote SQL.
+
+## 2026-11-24 — P0.2 private accounting candidate
+
+- **Status:** Implementation staged; exact-head validation pending. Based on PR #3 7ce31805b417284da51815f36b0fdb56a1063c44. No production change or remote SQL.
+- **Scope:** Sealed historical roster manifest, server punch replay and OT reconciliation, private timesheet submission via existing approval chain, atomic payroll lock with immutable evidence; retain public release gates. See [P0.2 design and acceptance](release/p0-2-accounting.md).
+- **Validation plan:** Disposable SQL fixture and all existing CI, preview build, independent accounting/security review. Known gaps: authoritative roster import/lifecycle, premium pay codes, correction/adjustment policy, native acceptance and contention tests.
