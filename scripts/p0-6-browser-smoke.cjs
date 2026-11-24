@@ -137,8 +137,11 @@ const assert = require('node:assert/strict');
         await page.getByRole('button',{name:'Download confidential PDF',exact:true}).click();
         const download=await downloadPromise;
         await download.saveAs('/tmp/nforce-browser/screenshots/sample-nforce-payslip.pdf');
-        const pdf=require('node:fs').readFileSync('/tmp/nforce-browser/screenshots/sample-nforce-payslip.pdf','utf8');
-        assert.ok(pdf.startsWith('%PDF-1.4')&&pdf.includes('FICTIONAL SAMPLE')&&pdf.includes('26,542.45')&&!/employer contribution|employer cost/i.test(pdf));
+        const pdfPath='/tmp/nforce-browser/screenshots/sample-nforce-payslip.pdf';
+        const pdf=require('node:fs').readFileSync(pdfPath,'utf8');
+        const extracted=require('node:child_process').execFileSync('pdftotext',['-layout',pdfPath,'-'],{encoding:'utf8'});
+        assert.ok(pdf.startsWith('%PDF-1.4')&&pdf.includes('/FontFile2')&&extracted.includes('FICTIONAL SAMPLE')&&extracted.includes('₱26,542.45')&&!/employer contribution|employer cost/i.test(extracted));
+        require('node:child_process').execFileSync('pdftoppm',['-f','1','-l','1','-r','120','-png',pdfPath,'/tmp/nforce-browser/screenshots/sample-payslip-render']);
       }
       await page.screenshot({path:'/tmp/nforce-browser/screenshots/role-'+role+'-payslip.png',fullPage:true});
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2),role+' payslip viewport overflow');

@@ -89,15 +89,31 @@ describe('released history and dispute scope',()=>{
   expect(()=>parseDisputeReceipts([r],'2026-02-01',2)).toThrow();
   expect(()=>parseDisputeReceipts([{...r,reason:'private'}],'2026-02-01',1)).toThrow();
  });
- it('generates an ASCII PDF with valid cross reference offsets and no employer costs',()=>{
+ it('generates an embedded Unicode PDF with valid cross reference offsets',()=>{
   const d=parsePersonalPayrollDetail(personalDetail,org,employee,'2026-02-01');
   const pdf=buildPayslipPdf(d,true);
-  expect(pdf).toContain('FICTIONAL SAMPLE');
-  expect(pdf).toContain('26,542.45');
+  expect(pdf).toContain('/Subtype /CIDFontType2');
+  expect(pdf).toContain('/FontFile2');
+  expect(pdf).toContain('/ToUnicode');
+  expect(pdf).toMatch(/<[0-9A-F]{4}> <20B1>/);
   expect(pdf).not.toMatch(/employer contribution|employer cost|\/JavaScript|\/OpenAction/i);
   const start=Number(pdf.match(/startxref\n(\d+)/)?.[1]);
   expect(pdf.slice(start,start+4)).toBe('xref');
   const entries=pdf.slice(start).split('\n').slice(3).filter(x=>/^\d{10} 00000 n /.test(x));
   entries.forEach((x,i)=>expect(pdf.slice(Number(x.slice(0,10)))).toMatch(new RegExp('^'+(i+1)+' 0 obj')));
+ });
+});
+
+describe('Unicode payslip export',()=>{
+ it('supports Filipino and Spanish accented text and NFC composition',()=>{
+  const detail=parsePersonalPayrollDetail({...personalDetail,items:[{...personalDetail.items[0],siteReference:'Peña, Cagaya\u0301n, Zürich'}]},org,employee,'2026-02-01');
+  const pdf=buildPayslipPdf(detail,true);
+  for(const cp of ['00F1','00E1','00FC','20B1'])expect(pdf).toMatch(new RegExp('<[0-9A-F]{4}> <'+cp+'>'));
+ });
+ it('fails closed for unsupported scripts and bidi controls',()=>{
+  for(const siteReference of ['中文','Office\u202E','x\u0301']){
+   const detail=parsePersonalPayrollDetail({...personalDetail,items:[{...personalDetail.items[0],siteReference}]},org,employee,'2026-02-01');
+   expect(()=>buildPayslipPdf(detail,true)).toThrow('Unsupported payslip PDF glyph');
+  }
  });
 });
