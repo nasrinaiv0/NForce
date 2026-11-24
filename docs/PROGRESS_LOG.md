@@ -247,3 +247,5 @@ Copy and complete for each meaningful change:
 
 ## 2026-11-24 P0.6 consolidation plan
 - Verified PR #13 and #12 exact-head CI. Canonical PH history and exact-second classifications replace duplicate P0.3 schema; enterprise lifecycle and review to be reconciled. Preserve private gates, test both lineages; no remote SQL, merges, paid resources or production changes.
+
+- Exact-head initial CI identified PL/pgSQL CASE-expression parsing at lifecycle attestation. Parenthesized conditional before revalidation. Added isolated browser and native JS export acceptance job (no hosted resources), see P0.6 notes.

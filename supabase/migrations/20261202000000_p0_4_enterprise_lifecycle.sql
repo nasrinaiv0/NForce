@@ -80,7 +80,7 @@ begin
   d:=(e.observed_at at time zone 'Asia/Manila')::date+case when e.operation='created' then 0 else 1 end;
   if e.status not in ('active','ended') then raise exception 'ambiguous employment state' using errcode='P0001'; end if;
   h:=app.ph_employment_as_of(p_org,e.user_id,d,clock_timestamp());
-  if h.status<>case when e.status='active' then 'employed' else 'separated' end or h.effective_on<>d then
+  if h.status<>(case when e.status='active' then 'employed' else 'separated' end) or h.effective_on<>d then
     raise exception 'exact dated attested employment evidence required' using errcode='P0001'; end if;
   if exists(select 1 from app.accounting_lifecycle_event x where x.organization_id=p_org and x.user_id=e.user_id and x.id<e.id
     and not exists(select 1 from app.accounting_lifecycle_ingestion i where i.event_id=x.id)) then raise exception 'earlier event requires reconciliation' using errcode='P0001'; end if;
