@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { parseAccountingSnapshot, parsePersonalPayroll, parsePersonalPayrollDetail, formatPayslipDecimal, formatPayslipInstant } from '@/data/accountingReview';
+import { parseAccountingSnapshot, parsePersonalPayroll, parsePersonalPayrollDetail, formatPayslipDecimal, formatPayslipInstant, parsePayrollHistory, parseDisputeReceipts } from '@/data/accountingReview';
+
+import { buildPayslipPdf } from '@/data/payslipPdf';
 
 const org = 'fb100000-0000-4000-8000-000000000001';
 const snapshot = { organizationId: org, periodStart: '2025-01-06', scope: 'self', source: 'locked-original-ph-v4', employeeCount: 1, workedSeconds: '32400.125', overtimeSeconds: '3600.125', lines: [{ code: 'RH_ND', seconds: '25200' }, { code: 'RH', seconds: '3600' }, { code: 'RH_OT', seconds: '3600.125' }] };
@@ -69,5 +71,33 @@ describe('display-only payslip amounts and Manila time',()=>{
   expect(formatPayslipInstant('2026-02-02T01:00:00Z','en')).toBe(formatPayslipInstant('2026-02-02T09:00:00+08:00','en'));
   expect(formatPayslipInstant('2026-02-02T09:00:00','en')).toBeNull();
   expect(formatPayslipInstant('invalid','en')).toBeNull();
+ });
+});
+
+describe('released history and dispute scope',()=>{
+ const h={organizationId:org,userId:employee,year:2026,coverageComplete:false,periods:[personal],periodCount:1,grossCents:personal.grossCents,employeeContributionCents:personal.employeeContributionCents,withholdingCents:personal.withholdingCents,netCents:personal.netCents,exemptCents:'0',taxableCents:'2755000'};
+ it('reconciles history totals and rejects duplicated periods and leaked fields',()=>{
+  expect(parsePayrollHistory(h,org,employee).netCents).toBe(personal.netCents);
+  expect(()=>parsePayrollHistory({...h,netCents:'1'},org,employee)).toThrow();
+  expect(()=>parsePayrollHistory({...h,periods:[personal,personal],periodCount:2},org,employee)).toThrow();
+  expect(()=>parsePayrollHistory({...h,employerCostCents:'1'},org,employee)).toThrow();
+  expect(()=>parsePayrollHistory(h,org,'other')).toThrow();
+ });
+ it('rejects a receipt from another revision or period',()=>{
+  const r={status:'submitted',periodStart:'2026-02-01',revision:1,itemIndex:0,submittedAt:'2026-03-01T00:00:00Z'};
+  expect(parseDisputeReceipts([r],'2026-02-01',1)).toHaveLength(1);
+  expect(()=>parseDisputeReceipts([r],'2026-02-01',2)).toThrow();
+  expect(()=>parseDisputeReceipts([{...r,reason:'private'}],'2026-02-01',1)).toThrow();
+ });
+ it('generates an ASCII PDF with valid cross reference offsets and no employer costs',()=>{
+  const d=parsePersonalPayrollDetail(personalDetail,org,employee,'2026-02-01');
+  const pdf=buildPayslipPdf(d,true);
+  expect(pdf).toContain('FICTIONAL SAMPLE');
+  expect(pdf).toContain('26,542.45');
+  expect(pdf).not.toMatch(/employer contribution|employer cost|\/JavaScript|\/OpenAction/i);
+  const start=Number(pdf.match(/startxref\n(\d+)/)?.[1]);
+  expect(pdf.slice(start,start+4)).toBe('xref');
+  const entries=pdf.slice(start).split('\n').slice(3).filter(x=>/^\d{10} 00000 n /.test(x));
+  entries.forEach((x,i)=>expect(pdf.slice(Number(x.slice(0,10)))).toMatch(new RegExp('^'+(i+1)+' 0 obj')));
  });
 });
