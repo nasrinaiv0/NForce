@@ -277,3 +277,11 @@ Copy and complete for each meaningful change:
 - Before preview commit: Python Decimal verified 93 cent allocations, maternity PHP23000, retirement PHP81000, redundancy PHP90000 and 13th-month PHP19000.84. Explicit fictional demo card uses the same component as live review; headless Chromium exercises the real payroll route and captures phone/desktop screenshots with no external traffic. Live authorization remains separately tested in SQL. No production changes.
 
 - PR #20 job 138177812629 reproduced Payroll card visibility timeout after native JS exports. Actual PR #19 screenshot inspection also showed shell-only captures. Before commit: use explicit fictional demo owner persona and real in-app More → Payroll navigation; wait for a real greeting before Home screenshot and monetary value before Payroll screenshot. No live authorization override or production changes.
+
+## 2026-11-24 — P1.1 canonical cutoffs
+
+- Before commit: audit #21, retain existing snapshot/journal and custody; adapt locked daily/semi-monthly calculations, overlap/frequency barrier, independent inverse journal, limited 13th accrual helper. Block unsafe reporting/replay. Document legal and test gates. No hosted changes.
+
+- Initial P1.1 job 138180049656 failed on undeclared FOREACH variable in imported evidence validator. Declared numeric variable; before next commit add closed cutoff month coverage and monthly contribution reconciliation to existing report path. Test complete February late hire and reject partial month. No external filing.
+
+- Exact-head database job 138180608372 passed daily and both semi-monthly posting assertions before malformed test delimiter. Corrected dollar quoting. Restack new candidate on #20 browser fix b093df840e0d1e3b8cec5ab286807a89083505e2 with checked lease; preserve all P1.1 SQL and tests. No merge, hosted changes or paid resources.
