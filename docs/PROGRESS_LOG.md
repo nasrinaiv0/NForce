@@ -268,3 +268,5 @@ Copy and complete for each meaningful change:
 - Initial PR #15 run 45311749060: disposable migration parsing failed at cumulative CASE in IF expression. Parenthesize CASE as numeric comparison operand without altering calculation or tests; rerun exact-head CI. No remote SQL.
 
 - Replacement bda64d2d disposable SQL passed (run 45311810127), including exact gross-to-net, journal, departed path, custody metadata, payroll-lock, benefit and cross-tenant races. Before final verification: extract monthly fixture for independent concurrent monetary posting, require one snapshot/journal/audit event, and prevent minute adjustments after monetary posting pending authorized monetary reversal. The fixture directly seeds locked evidence only for isolated monetary test; attendance replay is exercised by PR12 regression. No remote SQL.
+
+- Run 45312039379 (cd458416): independent-session seed failed independent-review check because fixture ran in autocommit, so transaction-local JWT claim reset before review. Run fixture in one explicit psql transaction (-1); keep distinct actor assertion and all guards unchanged. Recheck replacement head; disposable database only.
