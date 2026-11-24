@@ -54,6 +54,10 @@ begin
  end loop;
  perform pg_temp.attest(o,'wage',from_wage,jsonb_build_object('region','XI','locality','Davao City','sector','non-agriculture','coverage','ordinary private sector','site','fictional-site','order',ord,
  'source','https://nwpc.dole.gov.ph/region-xi/','documentSha256',repeat('a',64),'through',through_wage,'dailyMinimum',minw));
+ if basis='monthly' then
+ perform pg_temp.attest(o,'divisor',first_date,jsonb_build_object('recordedAt','2026-01-01T00:00:00Z','annualPaidDays',365));
+ perform pg_temp.attest(o,'salary_month',first_date,jsonb_build_object('method','full-calendar-month-no-unpaid-days','effectiveOn',first_date,'recordedAt','2026-01-01T00:00:00Z'));
+ end if;
  perform pg_temp.attest(o,'cutoff_opening','2026-01-01',jsonb_build_object('frequency',freq,'firstPeriod',first_date,'currentStart',first_date,'certificates','[]'::jsonb,'previousPeriods',0,'completeCurrentYtd',true,
  'benefitOpening',jsonb_build_object('through',first_date-1,'buckets','{}'::jsonb,'other',other_used,'medicalMode','monthly')));
  alloc:=case when freq='monthly' then e else (date_trunc('month',e)+interval '1 month - 1 day')::date end;

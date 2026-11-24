@@ -296,3 +296,5 @@ Copy and complete for each meaningful change:
 
 ## P1.3 — 2026-11-24
 Before commit: parent exact-head checks and actual screenshots reviewed; canonical weekly replay and effective final revision, restricted BIR Part II validator, tests and remaining legal gates documented. No hosted changes.
+
+- Initial P1.3 DB job 138196314854 passed weekly replay and form math. Before commit: extend same cutoff calculator to full monthly periods, reviewed monthly salary/divisor and overlap checks; test monthly replacement and canonical 13th accrual duplicate denial. No new monetary engine or remote changes.
