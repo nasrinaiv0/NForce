@@ -95,7 +95,7 @@ const assert = require('node:assert/strict');
       }else{
         await page.getByText('Personal payroll',{exact:true}).waitFor({timeout:30000});
         await page.getByText('My SSS',{exact:true}).waitFor({timeout:10000});
-        await page.getByText('₱26,542.45',{exact:true}).waitFor({timeout:10000});
+        await page.getByText('₱26,542.45',{exact:true}).first().waitFor({timeout:10000});
         assert.equal(await page.getByText('Monetary payroll review',{exact:true}).count(),0,role);
         assert.equal(await page.getByText(/employer contribution|employer cost/i).count(),0,role);
         assert.equal(await page.getByText(/export csv/i).count(),0,role);

@@ -83,13 +83,7 @@ export function PersonalPayrollReview() {
    try{document.body.appendChild(a);a.click();}finally{a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   }catch{setExportError(true);}finally{setExporting(false);}
  };
- return <View style={{gap:t.space.lg}}>
-  <View style={{gap:t.space.xs,paddingHorizontal:t.space.xs}}>
-   <Text variant="headline" accessibilityRole="header">{c.title}</Text>
-   {identityValid&&identity!==undefined&&<><Text variant="title2" weight="700">{identity.user.name}</Text><Text variant="subhead" color="textSecondary">{identity.organization.name}</Text></>}
-   <Text variant="footnote" color="textSecondary">{backend==='demo'?c.demo:c.hint}</Text>
-  </View>
-  <Card style={{gap:t.space.md}}>
+ const historyCard=(<Card style={{gap:t.space.md}}>
    <Text variant="headline" accessibilityRole="header">{l.history}</Text>
    <Text variant="footnote" color="textSecondary">{l.coverage}</Text>
    {backend==='demo'||h!==undefined?<View style={{gap:t.space.md}}>
@@ -105,13 +99,20 @@ export function PersonalPayrollReview() {
      <Button title={l.view} variant="tonal" onPress={()=>{setDate(p.periodStart);setPeriod(p.periodStart);}}/>
     </View>)}
    </View>:<Text variant="footnote" color="textSecondary">{l.unavailable}</Text>}
-  </Card>
+  </Card>);
+ return <View style={{gap:t.space.lg}}>
+  <View style={{gap:t.space.xs,paddingHorizontal:t.space.xs}}>
+   <Text variant="headline" accessibilityRole="header">{c.title}</Text>
+   {identityValid&&identity!==undefined&&<><Text variant="title2" weight="700">{identity.user.name}</Text><Text variant="subhead" color="textSecondary">{identity.organization.name}</Text></>}
+   <Text variant="footnote" color="textSecondary">{backend==='demo'?c.demo:c.hint}</Text>
+  </View>
   {backend!=='demo'&&<Card style={{gap:t.space.sm}}>
    <Text variant="footnote" color="textSecondary">{c.date}</Text>
    <TextInput accessibilityLabel={c.date} value={date} onChangeText={setDate} placeholder="2026-02-01" maxLength={10} autoCapitalize="none" style={{color:t.colors.text,backgroundColor:t.colors.fill,borderRadius:12,padding:12,minHeight:44}}/>
    <Button title={c.check} disabled={!valid || org === undefined || user === undefined} loading={q.isFetching} onPress={()=>{if(period===date) void q.refetch();else setPeriod(date);}}/>
   </Card>}
-  {data===undefined?<Card><Text variant="footnote" color="textSecondary">{c.unavailable}</Text></Card>:<>
+  {data===undefined?<><Card><Text variant="footnote" color="textSecondary">{c.unavailable}</Text></Card>{historyCard}
+</>:<>
    <Card style={{backgroundColor:t.colors.primaryContainer,gap:t.space.md,padding:t.space.xl}}>
     <View style={{gap:t.space.xs}}>
      <Text variant="label" color="onPrimaryContainer">{c.net}</Text>
@@ -134,6 +135,7 @@ export function PersonalPayrollReview() {
     {Platform.OS!=='web'&&<Text variant="footnote" color="textSecondary">{l.webOnly}</Text>}
     {exportError&&<Text variant="footnote" color="danger">{l.unavailable}</Text>}
    </Card>
+{historyCard}
    <PayrollEvidence key={(user??'demo')+'-'+(org??'demo')+'-'+(liveData?.summary.periodStart??'demo')+'-'+(liveData?.summary.revision??1)} live={liveData} org={org} user={user} detail={detail} grossCents={data.grossCents} periodStart={backend==='demo'?'2026-02-01':liveData?.summary.periodStart} periodEnd={backend==='demo'?'2026-02-28':liveData?.summary.periodEnd} revision={backend==='demo'?1:liveData?.summary.revision} deductions={<Card style={{gap:t.space.md}}>
     <Text variant="headline" accessibilityRole="header">{v.deductions}</Text>
     <PayslipRow label={c.sss} value={formatPhpCents(data.sssEmployeeCents)}/>
@@ -209,7 +211,7 @@ function PayrollEvidence({detail,grossCents,periodStart,periodEnd,revision,deduc
  const row=(label:string,value:string)=><PayslipRow key={label} label={label} value={value}/>;
  const money=(x:string|null|undefined)=>(x === null || x === undefined)?c.unknown:formatPhpCents(x);
  const remaining=detail.basicCents !== null && detail.basicCents !== undefined&&detail.premiumCents !== null && detail.premiumCents !== undefined?BigInt(grossCents)-BigInt(detail.basicCents)-BigInt(detail.premiumCents):null;
- const instant=(x:string|null|undefined)=>x==null?c.unknown:formatPayslipInstant(x,i18n.locale)??c.unknown;
+ const instant=(x:string|null|undefined)=>(x === null || x === undefined)?c.unknown:formatPayslipInstant(x,i18n.locale)??c.unknown;
  const description=(code:string)=>{
   const root=code.replace(/_ND$/,'').replace(/_OT$/,'');
   const name=(v.codes as Readonly<Record<string,string>>)[root]??root;
