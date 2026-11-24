@@ -313,3 +313,5 @@ Before commit: exact-head #21/#24 CI, preview and actual captures verified; docu
 - Superseded job 138203152291 passed historical and agency packet tests, then found stale category identifier in statutory audit insert. Correct audit reference to v_category before commit; no hosted changes.
 
 - Exact-head database job 138203536718: statutory tests passed through over-reimbursement denial; concurrent receipt seed failed at malformed single-dollar function bodies. Before commit: repair only seed delimiters, retain two-connection test and verify exact head. No remote changes.
+
+- Verified generated fixture before follow-up commit: replacement-string expansion retained single dollars. Use literal callback replacement; inspect all three function definitions for double-dollar delimiters. No calculation change.
