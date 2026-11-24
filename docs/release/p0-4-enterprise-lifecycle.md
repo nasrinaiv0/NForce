@@ -8,3 +8,6 @@ Stacked on PR #9 at 31b4e0c06273b919d4f7faa16f14f5b9a63f6893. No remote migratio
 - Next commit: departed employee dual control and regression tests, localized release gate. No public activation.
 
 Validate in disposable CI only: npm run test:db, npm run verify, npm run build:web. Independent Claude or equivalent review required for lock protocol, authorization, history completeness, payroll legality, responsive UI, spacing, fonts, buttons and accessibility. No real employee data, no production merges or migrations.
+
+## Second commit
+Departed employee review and approval are distinct private actions with current permissions, exact recalculation, immutable evidence, and no restored login. Existing submitted/approved sheets require review; versioned review replacement is not yet implemented. New SQL regressions cover capture, ingestion, offboarding and correction guard. Independent tenant lock test uses the existing disposable local CI database. Live timesheet/payroll views show a localized release notice rather than unverified results; query hooks remain mounted. Demo remains unchanged. Actual rendered browser acceptance, broader authorization races and enterprise load tests remain outstanding.

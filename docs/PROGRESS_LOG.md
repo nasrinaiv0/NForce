@@ -236,3 +236,5 @@ Copy and complete for each meaningful change:
 ## 2026-11-24 — P0.4 candidate
 
 - Parent PR #9 exact-head CI and Vercel green. Documented immutable lifecycle capture, private ingestion, tenant lock protocol and locked correction guard before commit. See P0.4 acceptance notes. No remote SQL or production changes.
+
+- Documented second candidate commit: two-person departed reconciliation, immutable decisions, same-tenant contention regression, localized live accounting gate. Exact-head CI pending; no remote writes.

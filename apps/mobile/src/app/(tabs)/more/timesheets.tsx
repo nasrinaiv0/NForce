@@ -4,6 +4,8 @@ import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/Button';
+import { AccountingReleaseGate } from '@/components/AccountingReleaseGate';
+import { usePreference } from '@/state/preferences';
 import { Avatar, Pill, type Tone } from '@/components/Display';
 import { Icon, type IconName } from '@/components/Icon';
 import { PayLinesList, RateCard } from '@/components/PayBreakdown';
@@ -29,6 +31,7 @@ const STATUS_TONE: Readonly<Record<TimesheetStatus, Tone>> = {
 
 export default function TimesheetScreen() {
   const t = useTheme();
+  const liveAccountingBlocked = usePreference('backend') === 'live';
   const i18n = useI18n();
   const { isDesktop } = useResponsive();
   const params = useLocalSearchParams<{ user?: string; period?: string }>();
@@ -40,6 +43,10 @@ export default function TimesheetScreen() {
   const sheet = useTimesheet(userId, period);
   const act = useTimesheetAction();
   const tz = session.data?.organization.timeZone ?? 'UTC';
+
+  if (liveAccountingBlocked) {
+    return <Screen><AccountingReleaseGate /></Screen>;
+  }
 
   if (sheet.isError) {
     return (
