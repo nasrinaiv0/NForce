@@ -21,3 +21,22 @@ export function parseAccountingSnapshot(raw: unknown, organizationId: string, pe
   }
   return value;
 }
+
+const cents = z.string().regex(/^\d{1,30}$/);
+const monetarySchema = z.object({
+  organizationId: z.uuid(), periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  source: z.literal('original-posted-accrual-v1'), employeeCount: z.number().int().positive(),
+  grossCents: cents, employeeContributionCents: cents, employerContributionCents: cents,
+  withholdingCents: cents, exemptCents: cents, netCents: cents, employerCostCents: cents,
+}).refine((s) => BigInt(s.grossCents) === BigInt(s.netCents) + BigInt(s.employeeContributionCents) + BigInt(s.withholdingCents) &&
+  BigInt(s.employerCostCents) === BigInt(s.grossCents) + BigInt(s.employerContributionCents) && BigInt(s.exemptCents) <= BigInt(s.grossCents));
+export type MonetarySnapshot = z.infer<typeof monetarySchema>;
+export function parseMonetarySnapshot(raw: unknown, organization: string, period: string) {
+  const s = monetarySchema.parse(raw);
+  if (s.organizationId !== organization || s.periodStart !== period) throw new Error('Monetary scope mismatch');
+  return s;
+}
+export function formatPhpCents(value: string) {
+  const s = value.padStart(3, '0');
+  return '₱' + s.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + s.slice(-2);
+}

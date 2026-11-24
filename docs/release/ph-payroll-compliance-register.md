@@ -87,3 +87,6 @@ See [P0.8 statutory review](p0-8-statutory.md) for updated 2026 sources, maker-c
 
 ## P0.9
 See [P0.9 settlement and reporting](p0-9-settlement.md) for source traceability, closed stable monthly salary candidate, approved leave allocation, annual accrual, private internal agency reconciliation and custody retention/key metadata. Actual filing, settlement, partial months, complete leave rules, KMS/destruction and independent review outstanding. No production activation.
+
+## P1.0 consolidation
+See [P1.0](p1-0-consolidation.md) for imported statutory arithmetic, current source traceability, quote-only daily/semi-monthly and reviewed monetary UI. Full payment, eligibility, government filing and legal certification remain outstanding.

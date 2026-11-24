@@ -33,3 +33,13 @@ select app.ph_review_key_rotation(pg_temp.org(),(select id from cert),1,'fiction
 select pg_temp.expect((app.ph_get_reviewed_envelope(pg_temp.org(),(select id from cert))->>'version')::int=1,'reviewed key version selected');
 select pg_temp.expect(not has_function_privilege('authenticated','app.ph_review_remittance_receipt(uuid,text,text)','EXECUTE'),'private remittance review');
 select pg_temp.expect(not has_table_privilege('authenticated','app.ph_custody_key_version','SELECT'),'private rotated ciphertext');
+
+select set_config('request.jwt.claim.sub',pg_temp.u(1)::text,true);
+select pg_temp.denied($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','monetary review disabled by default');
+insert into app.accounting_review_access(organization_id,evidence_reference,enabled_by,expires_at) values(pg_temp.org(),'fictional review only',pg_temp.u(1),now()+interval '1 hour');
+select pg_temp.expect((public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')->>'grossCents')='121125','server gross exact cents');
+select pg_temp.expect((public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')->>'netCents')='61125','server net exact cents');
+select set_config('request.jwt.claim.sub',pg_temp.u(3)::text,true);
+select pg_temp.denied($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','staff cannot access organization monetary totals');
+select pg_temp.denied($$select public.payroll_management_snapshot('fb100000-0000-0000-0000-000000000099','2026-01-12')$$,'42501','foreign tenant denied');
+select pg_temp.expect(not has_function_privilege('anon','public.payroll_management_snapshot(uuid,date)','EXECUTE'),'anonymous monetary review denied');

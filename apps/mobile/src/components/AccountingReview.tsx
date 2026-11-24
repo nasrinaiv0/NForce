@@ -3,11 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { View } from 'react-native';
 
+import { PayrollManagementSummary } from '@/components/PayrollManagementSummary';
 import { AccountingReleaseGate } from '@/components/AccountingReleaseGate';
 import { Button } from '@/components/Button';
 import { Card } from '@/components/Surface';
 import { Text } from '@/components/Text';
-import { parseAccountingSnapshot, type AccountingScope } from '@/data/accountingReview';
+import { parseAccountingSnapshot, parseMonetarySnapshot, type AccountingScope } from '@/data/accountingReview';
 import { liveConfigured, supabase } from '@/data/supabase';
 import { useTheme } from '@/design/theme';
 import { useI18n } from '@/i18n';
@@ -49,6 +50,18 @@ export function AccountingReview({ scope, requestedUser }: { scope: AccountingSc
       return parseAccountingSnapshot(data, organization, period, scope);
     },
   });
+  const monetary = useQuery({
+    queryKey: ['nforce','monetary-review-v1',user,organization,period],
+    enabled: enabled && scope === 'organization', retry:false, gcTime:0, staleTime:0, refetchOnMount:'always', refetchInterval:15000,
+    queryFn: async () => {
+      if (organization === undefined || user === undefined) throw new Error('Review unavailable');
+      const {data,error} = await supabase().rpc('payroll_management_snapshot',{p_organization_id:organization,p_period_start:period});
+      const current = backendStore.get();
+      if (error !== null || current.auth !== 'signed_in' || current.userId !== user || activeWorkspace(current)?.organizationId !== organization) throw new Error('Review unavailable');
+      return parseMonetarySnapshot(data,organization,period);
+    },
+  });
+  const money = enabled && scope === 'organization' && !monetary.isFetching && !monetary.isError ? monetary.data : undefined;
   const snapshot = enabled && !q.isFetching && !q.isError ? q.data : undefined;
   return (
     <View style={{ gap: t.space.lg }}>
@@ -61,6 +74,7 @@ export function AccountingReview({ scope, requestedUser }: { scope: AccountingSc
           <Button title={message.later} size="small" variant="tonal" onPress={() => setChosen(addDays(period, 7))} />
         </View>
       </Card>
+      {scope === 'organization' && <PayrollManagementSummary snapshot={money} />}
       {snapshot === undefined ? (
         <>
           <AccountingReleaseGate />
