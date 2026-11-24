@@ -580,7 +580,9 @@ begin
  if found then return old.result;end if;
  if jsonb_typeof(a.payload->'allocations') is distinct from 'object' or a.payload->>'allocationMethod' is distinct from 'reviewed-calendar-residual-v1'
  or coalesce(a.payload->>'sourceDigest','') !~ '^[a-f0-9]{64}$' then raise exception 'explicit reviewed allocation required' using errcode='P0001';end if;
+ if (app.ph_approved_evidence(p_org,p_user,'cutoff_opening','2026-01-01')).payload->>'frequency' is distinct from 'monthly' then raise exception 'restricted monthly maternity integration required' using errcode='P0001';end if;
  v:=app.ph_reconcile_maternity_coverage(p_org,p_user,p_day);
+ if (select count(*) from jsonb_object_keys(a.payload->'allocations'))<>jsonb_array_length(v->'contributionMonths') then raise exception 'allocation month set mismatch' using errcode='P0001';end if;
  select * into strict adv from app.ph_statutory_journal where attestation_id=(a.payload->>'advanceAttestationId')::uuid and organization_id=p_org and user_id=p_user and category='maternity_advance';
  if exists(select 1 from app.ph_month_report where organization_id=p_org and month_start between date_trunc('month',adv.covered_from)::date and date_trunc('month',adv.covered_to)::date) then raise exception 'closed month requires amendment' using errcode='P0001';end if;
  ee:=(v->>'employeeContributions')::numeric;er:=(v->>'employerContributions')::numeric;
