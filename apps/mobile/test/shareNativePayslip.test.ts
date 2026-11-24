@@ -1,13 +1,13 @@
 import { beforeEach,describe,expect,it,vi } from 'vitest';
+import { shareNativePayslip } from '@/lib/shareNativePayslip';
 const m=vi.hoisted(()=>({available:vi.fn(),share:vi.fn(),write:vi.fn(),remove:vi.fn(),create:vi.fn()}));
 vi.mock('expo-file-system',()=>({
  Paths:{cache:'private-cache'},
- Directory:class {exists=false; constructor(..._parts:unknown[]){} create(){this.exists=true;m.create();}delete(){this.exists=false;m.remove();}},
- File:class {uri='file:///private-cache/nforce-payslips/sample.pdf';constructor(..._parts:unknown[]){}create(){}write(s:string){m.write(s);}}
+ Directory:class {exists=false;  create(){this.exists=true;m.create();}delete(){this.exists=false;m.remove();}},
+ File:class {uri='file:///private-cache/nforce-payslips/sample.pdf';create(){}write(s:string){m.write(s);}}
 }));
 vi.mock('expo-crypto',()=>({randomUUID:()=> 'fictional-random'}));
 vi.mock('expo-sharing',()=>({isAvailableAsync:m.available,shareAsync:m.share}));
-import { shareNativePayslip } from '@/lib/shareNativePayslip';
 const pdf='%PDF-1.4\n%%EOF',name='nforce-payslip-2026-02-01-r1.pdf';
 describe('native private PDF handoff',()=>{
  beforeEach(()=>{vi.clearAllMocks();m.available.mockResolvedValue(true);m.share.mockResolvedValue(undefined);});
