@@ -339,6 +339,7 @@ export function KpiTile({
   better,
   hint,
   wrapContent = false,
+  stacked = false,
 }: {
   label: string;
   value: string;
@@ -349,13 +350,14 @@ export function KpiTile({
   hint?: string;
   /** Keep exact totals and explanatory text visible on dense financial screens. */
   wrapContent?: boolean;
+  stacked?: boolean;
 }) {
   const t = useTheme();
   const good = delta !== undefined && better !== undefined && delta.direction !== 'flat' ? delta.direction === better : undefined;
   const color = good === undefined ? t.colors.textSecondary : good ? t.colors.success : t.colors.danger;
   return (
     <View
-      style={[styles.kpi, { backgroundColor: t.colors.surface, borderRadius: t.shape.card }]}
+      style={[styles.kpi, stacked && { flexBasis: 'auto', flexGrow: 0, flexShrink: 0, width: '100%', minWidth: 0 }, { backgroundColor: t.colors.surface, borderRadius: t.shape.card }]}
       accessible
       accessibilityLabel={`${label}: ${value}${delta !== undefined ? `, ${delta.text}` : ''}`}
     >
