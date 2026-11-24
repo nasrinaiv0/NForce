@@ -95,6 +95,10 @@ begin
     execute format('create trigger p03_immutable before update or delete on app.%I for each row execute function app.forbid_mutation()',n);
   end loop;
 end $$;
+-- Snapshot rows may only be appended while the manifest is unsealed.
+create trigger p03_day_policy_guard before insert on app.accounting_day_policy
+for each row execute function app.accounting_guard_roster();
+
 -- Shared freeze barrier with materialization; never change a sealed period.
 create function app.accounting_history_guard() returns trigger
 language plpgsql set search_path='' as $$
@@ -222,7 +226,8 @@ with ev as (
       extract(minute from m.at_time at time zone (r->>'timezone'))::int) as local_minute
   from mins m join app.accounting_day_policy p on p.organization_id=p_org and p.period_start=p_period
     and p.user_id=p_user and p.work_date=m.work_date
-  join app.accounting_roster_day d using(organization_id,period_start,user_id,work_date)
+  join app.accounting_roster_day d on d.organization_id=p.organization_id and d.period_start=p.period_start
+    and d.user_id=p.user_id and d.work_date=p.work_date
   join lateral jsonb_array_elements(r->'days') as j(x) on (j.x->>'date')::date=m.work_date
 ), buckets as (
   select *,rn>regular_minutes as ot,

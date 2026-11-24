@@ -230,3 +230,5 @@ Copy and complete for each meaningful change:
 - Parent PR #4 exact head 0384bfa8372ae5934536f55c65b3987bc2286d72: CI and Vercel passed. Candidate private only; existing public release gate unchanged.
 - Prepared append-only history, sealed weekly roster automation, premium classification, dual-control adjustment ledger and independent-connection lock regression. Documented design, limitations and acceptance before committing in [P0.3 release notes](release/p0-3-workforce-payroll.md).
 - Validation: exact-head SQL/CI and Vercel pending; no local PostgreSQL/Supabase CLI available in current sandbox. No remote SQL or resource changes.
+
+- Pre-CI review: qualify the premium classification join to avoid duplicate work_date columns; enforce the existing roster seal guard on day-policy inserts. Replacement head to be validated.
