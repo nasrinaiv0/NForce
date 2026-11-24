@@ -64,7 +64,7 @@ begin
  if p_total is null or p_total::text in ('NaN','Infinity','-Infinity') or p_total<0 or p_total>1000000000 or p_total<>round(p_total,2)
  or p_prior_withheld is null or p_prior_withheld::text in ('NaN','Infinity','-Infinity') or p_prior_withheld<0 or p_prior_withheld>1000000000 or p_prior_withheld<>round(p_prior_withheld,2)
  or p_periods is null or p_frequency is null or p_frequency not in ('monthly','semi-monthly','weekly','daily')
- or p_periods<1 or p_periods>case p_frequency when 'monthly' then 12 when 'semi-monthly' then 24 when 'weekly' then 53 else 366 end
+ or p_periods<1 or p_periods>(case p_frequency when 'monthly' then 12 when 'semi-monthly' then 24 when 'weekly' then 53 else 366 end)
  then raise exception 'invalid cumulative withholding inputs' using errcode='22023'; end if;
  avg_pay:=round(p_total/p_periods,2);
  avg_tax:=app.ph_tax_candidate(avg_pay,p_frequency,p_day);
