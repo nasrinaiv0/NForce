@@ -311,3 +311,5 @@ Before commit: exact-head #21/#24 CI, preview and actual captures verified; docu
 - Before commit: static inspection of committed race fixture identified single-dollar helper delimiters; restore literal double-dollar delimiters before running the disposable DB race. No hosted changes.
 
 - Superseded job 138203152291 passed historical and agency packet tests, then found stale category identifier in statutory audit insert. Correct audit reference to v_category before commit; no hosted changes.
+
+- Exact-head database job 138203536718: statutory tests passed through over-reimbursement denial; concurrent receipt seed failed at malformed single-dollar function bodies. Before commit: repair only seed delimiters, retain two-connection test and verify exact head. No remote changes.
