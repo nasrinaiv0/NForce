@@ -7,9 +7,13 @@ select pg_temp.denied($$ update app.accounting_lifecycle_event set status='ended
 insert into auth.users(id) values(pg_temp.u(5));
 insert into public.memberships(organization_id,user_id,status,reports_to)
 values(pg_temp.org(),pg_temp.u(5),'active',(select id from public.memberships where organization_id=pg_temp.org() and user_id=pg_temp.u(1)));
+-- Fictional independent attestation; no inferred pay or status.
+insert into app.ph_employment_history(organization_id,user_id,effective_on,status,pay_basis,rate_php,site_reference,wage_order_reference,evidence_reference,recorded_by)
+select organization_id,user_id,(observed_at at time zone 'Asia/Manila')::date,'employed','daily',650,'fixture site','fixture wage order','fictional independent employment evidence',pg_temp.u(1)
+from app.accounting_lifecycle_event where organization_id=pg_temp.org() and user_id=pg_temp.u(5);
 create temp table ingested as select id,app.accounting_ingest_lifecycle(pg_temp.org(),id) as effective_on from app.accounting_lifecycle_event where organization_id=pg_temp.org() and user_id=pg_temp.u(5);
 select pg_temp.expect((select effective_on=app.accounting_ingest_lifecycle(pg_temp.org(),id) from ingested),'historical ingestion retry idempotent');
-select pg_temp.expect((select count(*)=1 from app.accounting_employee_history where organization_id=pg_temp.org() and user_id=pg_temp.u(5)),'no synthetic prehire history');
+select pg_temp.expect((select count(*)=1 from app.ph_shift_history where organization_id=pg_temp.org() and user_id=pg_temp.u(5)),'no synthetic prehire history');
 update public.timesheets set status='returned' where organization_id=pg_temp.org() and user_id=pg_temp.u(2);
 select public.offboard_member((select id from public.memberships where organization_id=pg_temp.org() and user_id=pg_temp.u(2)));
 select app.accounting_prepare_departed(pg_temp.org(),'2025-01-06',pg_temp.u(2),'fictional final reconciliation evidence');

@@ -1,4 +1,4 @@
-import { addDays, formatDuration, localDateKey, type DateKey } from '@nforce/core';
+import { addDays, localDateKey, type DateKey } from '@nforce/core';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -15,9 +15,9 @@ import { activeWorkspace, backendStore, useBackend } from '@/state/backend';
 import { usePreference } from '@/state/preferences';
 
 const copy = {
-  en: { title: 'Locked accounting review', hint: 'Original locked server records only. Adjustments, wage amounts, exports and submission are not included.', employees: 'Employees', worked: 'Worked time', overtime: 'Approved overtime', earlier: 'Previous week', later: 'Next week', waiting: 'Checking server records…', reload: 'Check again', source: 'Server-verified original snapshot' },
-  fil: { title: 'Pagsusuri ng naka-lock na accounting', hint: 'Orihinal na naka-lock na rekord ng server lamang. Hindi kasama ang mga adjustment, sahod, pag-export at pagsusumite.', employees: 'Mga empleyado', worked: 'Oras ng trabaho', overtime: 'Aprubadong overtime', earlier: 'Nakaraang linggo', later: 'Susunod na linggo', waiting: 'Sinusuri ang mga rekord…', reload: 'Suriin muli', source: 'Orihinal na rekord mula sa server' },
-  es: { title: 'Revisión contable bloqueada', hint: 'Solo registros originales bloqueados del servidor. No incluye ajustes, salarios, exportaciones ni envíos.', employees: 'Empleados', worked: 'Tiempo trabajado', overtime: 'Horas extra aprobadas', earlier: 'Semana anterior', later: 'Semana siguiente', waiting: 'Consultando registros…', reload: 'Consultar de nuevo', source: 'Registro original del servidor verificado' },
+  en: { title: 'Locked accounting review', hint: 'Original locked server records only. Adjustments, wage amounts, exports and submission are not included.', employees: 'Employees', worked: 'Worked time', overtime: 'Compensable overtime', earlier: 'Previous week', later: 'Next week', waiting: 'Checking server records…', reload: 'Check again', source: 'Server-verified original snapshot' },
+  fil: { title: 'Pagsusuri ng naka-lock na accounting', hint: 'Orihinal na naka-lock na rekord ng server lamang. Hindi kasama ang mga adjustment, sahod, pag-export at pagsusumite.', employees: 'Mga empleyado', worked: 'Oras ng trabaho', overtime: 'Overtime na dapat bayaran', earlier: 'Nakaraang linggo', later: 'Susunod na linggo', waiting: 'Sinusuri ang mga rekord…', reload: 'Suriin muli', source: 'Orihinal na rekord mula sa server' },
+  es: { title: 'Revisión contable bloqueada', hint: 'Solo registros originales bloqueados del servidor. No incluye ajustes, salarios, exportaciones ni envíos.', employees: 'Empleados', worked: 'Tiempo trabajado', overtime: 'Horas extra compensables', earlier: 'Semana anterior', later: 'Semana siguiente', waiting: 'Consultando registros…', reload: 'Consultar de nuevo', source: 'Registro original del servidor verificado' },
 } as const;
 
 function lastWeek(zone: string): DateKey {
@@ -39,7 +39,7 @@ export function AccountingReview({ scope, requestedUser }: { scope: AccountingSc
   const period = chosen ?? lastWeek(workspace?.timeZone ?? 'UTC');
   const enabled = liveConfigured && state.auth === 'signed_in' && user !== undefined && organization !== undefined && (scope !== 'self' || requestedUser === undefined || requestedUser === user);
   const q = useQuery({
-    queryKey: ['nforce', 'locked-review-v3', user, organization, period, scope],
+    queryKey: ['nforce', 'locked-review-ph-v4', user, organization, period, scope],
     enabled, retry: false, gcTime: 0, staleTime: 0, refetchOnMount: 'always', refetchInterval: 15000,
     queryFn: async () => {
       if (organization === undefined || user === undefined) throw new Error('Review unavailable');
@@ -71,12 +71,12 @@ export function AccountingReview({ scope, requestedUser }: { scope: AccountingSc
         <Card style={{ gap: t.space.md }}>
           <Text variant="caption" color="textSecondary">{message.source}</Text>
           {scope === 'organization' && <Text variant="body">{message.employees}: {i18n.number(snapshot.employeeCount)}</Text>}
-          <Text variant="body">{message.worked}: {formatDuration(snapshot.workedMinutes)}</Text>
-          <Text variant="body">{message.overtime}: {formatDuration(snapshot.approvedOvertimeMinutes)}</Text>
+          <Text variant="body">{message.worked}: {snapshot.workedSeconds + ' s'}</Text>
+          <Text variant="body">{message.overtime}: {snapshot.overtimeSeconds + ' s'}</Text>
           {snapshot.lines.map((line) => (
             <View key={line.code} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: t.space.sm }}>
               <Text variant="body">{line.code}</Text>
-              <Text variant="body" tabular>{formatDuration(line.minutes)}</Text>
+              <Text variant="body" tabular>{line.seconds + ' s'}</Text>
             </View>
           ))}
         </Card>

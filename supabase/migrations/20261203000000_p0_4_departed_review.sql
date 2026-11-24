@@ -32,7 +32,7 @@ begin
   if not exists(select 1 from public.memberships where organization_id=p_org and user_id=p_user and status='ended') then raise exception 'departed employee required' using errcode='P0001'; end if;
   if exists(select 1 from public.payroll_periods where organization_id=p_org and period_start=p_period) then raise exception 'period already locked' using errcode='P0001'; end if;
   r:=app.accounting_reconcile(p_org,p_period,p_user);
-  if not (r ? 'payLines') or (r->>'unapprovedOvertime')::int<>0 then raise exception 'classified reconciled hours required' using errcode='P0001'; end if;
+  if not (r ? 'payLines') or (r->>'unapprovedOvertime')::int<>0 or coalesce((r->>'exactOvertimeReviewSeconds')::numeric,0)>0 then raise exception 'classified reconciled hours required' using errcode='P0001'; end if;
   if exists(select 1 from public.timesheets where organization_id=p_org and period_start=p_period and user_id=p_user and status not in ('draft','returned')) then raise exception 'existing sheet requires review' using errcode='P0001'; end if;
   insert into app.accounting_departed_review(organization_id,period_start,user_id,reconciliation,evidence_reference,prepared_by)
     values(p_org,p_period,p_user,r,p_evidence,auth.uid());

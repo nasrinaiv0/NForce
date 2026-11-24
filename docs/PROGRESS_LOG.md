@@ -244,3 +244,10 @@ Copy and complete for each meaningful change:
 - PR #11 exact-head CI/Vercel green. Documented review RPC, short-lived tenant gate, bounded dual-control ingestion and authorization locks before commit. Native package metadata verification and UI work follow. No remote SQL, resources or production changes.
 
 - Before second commit: registry metadata verified for SDK 58 SecureStore 58.0.3 via isolated CI job 138162105020. Added pinned integrity lock entry, native OS-vault adapter and tests, server-only read review UI and auth-generation guard, independent ingestion and role-race regression. Browser remains memory-only; public writes remain disabled. Native real-device and rendered browser acceptance outstanding.
+
+## 2026-11-24 P0.6 consolidation plan
+- Verified PR #13 and #12 exact-head CI. Canonical PH history and exact-second classifications replace duplicate P0.3 schema; enterprise lifecycle and review to be reconciled. Preserve private gates, test both lineages; no remote SQL, merges, paid resources or production changes.
+
+- Exact-head initial CI identified PL/pgSQL CASE-expression parsing at lifecycle attestation. Parenthesized conditional before revalidation. Added isolated browser and native JS export acceptance job (no hosted resources), see P0.6 notes.
+
+- PR #14 exact-head 138168255216: iOS, Android and web JS exports succeeded; Playwright 1.56.1 browser installation failed on ubuntu26.04-x64. Pin isolated acceptance job to ubuntu-24.04 before retry. No remote migrations, merge or production changes.
