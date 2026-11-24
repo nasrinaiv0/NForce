@@ -20,7 +20,7 @@ create view app.ph_effective_monetary with (security_invoker=true) as
  select s.* from app.ph_monetary_snapshot s where s.revision=2 or not exists(select 1 from app.ph_canonical_reversal r where (r.organization_id,r.period_start,r.user_id)=(s.organization_id,s.period_start,s.user_id));
 revoke all on app.ph_effective_monetary from public,anon,authenticated,service_role;
 alter table app.ph_payroll_attestation drop constraint ph_payroll_attestation_kind_check;
-alter table app.ph_payroll_attestation add check(kind in ('opening','month','divisor','week','annual','salary_month','settlement_journal','custody_policy','statutory_quote','cutoff_opening','period','wage','contribution','reversal','entitlement','replay'));
+alter table app.ph_payroll_attestation add check(kind in ('opening','month','divisor','week','annual','salary_month','settlement_journal','custody_policy','statutory_quote','cutoff_opening','period','wage','contribution','reversal','entitlement','replay','cutoff_final'));
 create function app.ph_unresolved_reversal(p_org uuid,p_user uuid) returns boolean language sql stable set search_path='' as $$
  select exists(select 1 from app.ph_canonical_reversal r where r.organization_id=p_org and (p_user is null or r.user_id=p_user)
  and not exists(select 1 from app.ph_monetary_snapshot s where (s.organization_id,s.period_start,s.user_id,s.revision)=(r.organization_id,r.period_start,r.user_id,2)))
@@ -86,6 +86,8 @@ begin
  or ((y->>'hazardPay')::numeric>0 and length(btrim(coalesce(y->>'hazardEvidence','')))<8)
  then raise exception 'complete reviewed period evidence required' using errcode='22023';end if;
  if a.kind='replay' and (y->>'undispatched' is distinct from 'true' or length(btrim(coalesce(y->>'reason','')))<8 or (y->>'originalAttestation')::uuid is null) then raise exception 'reviewed replacement evidence required' using errcode='22023';end if;
+ when 'cutoff_final' then
+ if y->>'reason' is distinct from 'termination' or y->>'exitKind' is distinct from 'ordinary_resignation_no_severance' or y->>'undispatched' is distinct from 'true' or y->>'completeExitEntitlements' is distinct from 'true' or y->>'rankAndFileEligible' is distinct from 'true' or not app.ph_stat_money((y->>'available')::numeric) then raise exception 'restricted reviewed final compensation required' using errcode='22023';end if;
  when 'contribution' then
  if extract(day from a.scope_date)<>1 or (y->>'allocationDate')::date is null or date_trunc('month',(y->>'allocationDate')::date)::date<>a.scope_date
  then raise exception 'monthly contribution allocation date required' using errcode='22023';end if;
@@ -340,7 +342,7 @@ create or replace function app.ph_guard_cutoff_closed() returns trigger language
 begin
  perform app.accounting_tenant_lock(new.organization_id);
  if app.ph_unresolved_reversal(new.organization_id,null) then raise exception 'reversed accrual requires amended review' using errcode='P0001';end if;
- if tg_table_name='ph_annual_settlement' and exists(select 1 from app.ph_monetary_snapshot s where s.organization_id=new.organization_id and s.frequency<>'weekly') then raise exception 'cutoff annual settlement requires dedicated completeness review' using errcode='P0001';end if;
+
  return new;
 end $$;
 create or replace function app.ph_month_report_totals(p_org uuid,p_month date) returns jsonb
@@ -366,11 +368,11 @@ begin
  if not exists(select 1 from app.ph_effective_monetary s where s.organization_id=p_org and s.pay_date>=p_month and s.pay_date<e)
  or exists(select 1 from app.accounting_locked_snapshot s where s.organization_id=p_org and s.period_start+6>=p_month and s.period_start+6<e and not exists(select 1 from app.ph_effective_monetary m where (m.organization_id,m.period_start,m.user_id)=(s.organization_id,s.period_start,s.user_id))
  and not exists(select 1 from app.ph_payroll_attestation x join app.ph_payroll_attestation_decision d on d.attestation_id=x.id where x.organization_id=s.organization_id and x.user_id=s.user_id and x.kind='cutoff_opening' and (x.payload->>'firstPeriod')::date<e))
- or exists(select 1 from app.ph_annual_settlement a where a.organization_id=p_org and a.final_period+6>=p_month and a.final_period+6<e and not exists(select 1 from app.ph_annual_journal j where (j.organization_id,j.user_id,j.tax_year)=(a.organization_id,a.user_id,a.tax_year)))
+ or exists(select 1 from app.ph_annual_settlement a where a.organization_id=p_org and (select es.pay_date from app.ph_effective_monetary es where (es.organization_id,es.period_start,es.user_id,es.revision)=(a.organization_id,a.final_period,a.user_id,a.final_revision))>=p_month and (select es.pay_date from app.ph_effective_monetary es where (es.organization_id,es.period_start,es.user_id,es.revision)=(a.organization_id,a.final_period,a.user_id,a.final_revision))<e and not exists(select 1 from app.ph_annual_journal j where (j.organization_id,j.user_id,j.tax_year)=(a.organization_id,a.user_id,a.tax_year)))
  then raise exception 'unposted locked payroll or settlement' using errcode='P0001'; end if;
  select coalesce(sum((s.evidence->'contributions'->'sss'->>'total')::numeric),0),coalesce(sum((s.evidence->'contributions'->'philhealth'->>'total')::numeric),0),coalesce(sum((s.evidence->'contributions'->'pagibig'->>'total')::numeric),0),sum(s.withholding)
  into sss,ph,pi,tax from app.ph_effective_monetary s where s.organization_id=p_org and s.pay_date>=p_month and s.pay_date<e;
- select coalesce(sum((a.result->>'employeeWithholding')::numeric+(a.result->>'employerAdvance')::numeric),0) into annual_due from app.ph_annual_settlement a join app.ph_annual_journal x using(organization_id,user_id,tax_year) where a.organization_id=p_org and a.final_period+6>=p_month and a.final_period+6<e;
+ select coalesce(sum((a.result->>'employeeWithholding')::numeric+(a.result->>'employerAdvance')::numeric),0) into annual_due from app.ph_annual_settlement a join app.ph_annual_journal x using(organization_id,user_id,tax_year) where a.organization_id=p_org and (select es.pay_date from app.ph_effective_monetary es where (es.organization_id,es.period_start,es.user_id,es.revision)=(a.organization_id,a.final_period,a.user_id,a.final_revision))>=p_month and (select es.pay_date from app.ph_effective_monetary es where (es.organization_id,es.period_start,es.user_id,es.revision)=(a.organization_id,a.final_period,a.user_id,a.final_revision))<e;
  -- Refund receivables remain separate. No automatic offset against current BIR.
  return jsonb_build_object('sss',sss,'philhealth',ph,'pagibig',pi,'bir',tax+annual_due,'refundOffsetApplied',false);
 end $$;
@@ -445,3 +447,76 @@ begin
  return jsonb_build_object('format','internal-reconciliation-v1','officialFiling',false,'csv',csv,'sha256',encode(sha256(convert_to(csv,'UTF8')),'hex'));
 end $$;
 revoke all on function app.ph_unresolved_reversal(uuid,uuid),app.ph_post_cutoff_version(uuid,uuid,date,boolean),app.ph_replay_cutoff_2026(uuid,uuid,date),app.ph_export_reviewed_month(uuid,date) from public,anon,authenticated,service_role;
+
+
+-- Ordinary resignation only, current-year daily/semi-monthly with no prior
+-- employer. Closed 2026 year end is beyond this candidate's research cutoff.
+create function app.ph_record_cutoff_final(p_org uuid,p_user uuid,p_start date) returns jsonb
+language plpgsql set search_path='' as $$
+declare a app.ph_payroll_attestation; o app.ph_payroll_attestation; s app.ph_monetary_snapshot; h app.ph_employment_history;
+ t numeric; w numeric; basic numeric; paid numeric; avail numeric; j jsonb; e date;
+begin
+ perform app.accounting_tenant_lock(p_org);
+ if auth.uid() is null or auth.uid()=p_user or not app.has_permission(p_org,'payroll.prepare') or not app.has_permission(p_org,'timesheet.lock') then raise exception 'forbidden' using errcode='42501';end if;
+ if app.ph_unresolved_reversal(p_org,p_user) then raise exception 'unresolved reversal' using errcode='P0001';end if;
+ a:=app.ph_approved_evidence(p_org,p_user,'cutoff_final',p_start);
+ if a.maker=auth.uid() then raise exception 'independent settlement required' using errcode='42501';end if;
+ o:=app.ph_approved_evidence(p_org,p_user,'cutoff_opening','2026-01-01');
+ select * into s from app.ph_effective_monetary where organization_id=p_org and user_id=p_user and period_start=p_start;
+ if not found or s.frequency not in ('daily','semi-monthly') or exists(select 1 from app.ph_effective_monetary x where x.organization_id=p_org and x.user_id=p_user and x.period_start>p_start) then raise exception 'latest effective cutoff required' using errcode='P0001';end if;
+ e:=s.pay_date;
+ if not exists(select 1 from public.memberships where organization_id=p_org and user_id=p_user and status='ended')
+ or exists(select 1 from app.ph_2316_import where organization_id=p_org and user_id=p_user and tax_year=2026)
+ or o.payload->'certificates' is distinct from '[]'::jsonb
+ or (o.payload->>'previousPeriods')::int<>0 then raise exception 'restricted final termination scope' using errcode='P0001';end if;
+ h:=app.ph_employment_as_of(p_org,p_user,e+1,clock_timestamp());
+ if h.status is distinct from 'separated' or h.effective_on is distinct from e+1 then raise exception 'reviewed separation required' using errcode='P0001';end if;
+ if e+1<((o.payload->>'firstPeriod')::date+interval '1 month')::date
+ or exists(select 1 from generate_series((o.payload->>'firstPeriod')::date,e,interval '1 day') g where not exists(select 1 from app.ph_effective_monetary m where m.organization_id=p_org and m.user_id=p_user and g::date between m.period_start and m.pay_date)) then raise exception 'complete final year coverage required' using errcode='P0001';end if;
+ if exists(select 1 from app.ph_benefit_event x where x.organization_id=p_org and x.user_id=p_user and x.tax_year=2026 and not exists(select 1 from app.ph_effective_monetary m where m.organization_id=p_org and m.user_id=p_user and x.paid_on between m.period_start and m.pay_date and m.evidence->'benefitKeys' ? x.event_key)) then raise exception 'unreconciled benefits' using errcode='P0001';end if;
+ -- All monthly liabilities must be allocated, including the final month;
+ -- otherwise final settlement would silently omit statutory deductions.
+ if exists(select 1 from generate_series(date_trunc('month',(o.payload->>'firstPeriod')::date)::date,date_trunc('month',e)::date,interval '1 month') g
+ where not exists(select 1 from app.ph_payroll_attestation c join app.ph_payroll_attestation_decision d on d.attestation_id=c.id
+ join app.ph_effective_monetary m on m.organization_id=c.organization_id and m.user_id=c.user_id and m.pay_date=(c.payload->>'allocationDate')::date and m.evidence->>'contributionEvidence'=c.id::text
+ where c.organization_id=p_org and c.user_id=p_user and c.kind='contribution' and c.scope_date=g::date and m.pay_date<=e))
+ then raise exception 'unallocated final contributions' using errcode='P0001';end if;
+ select coalesce(sum(m.taxable),0),coalesce(sum(m.withholding),0),coalesce(sum((m.evidence->>'basic')::numeric),0) into t,w,basic from app.ph_effective_monetary m where m.organization_id=p_org and m.user_id=p_user and extract(year from m.pay_date)=2026;
+ select coalesce(sum((x.result->>'gross')::numeric),0) into paid from app.ph_benefit_event x where x.organization_id=p_org and x.user_id=p_user and x.tax_year=2026 and x.request->>'code'='13th_month';
+ if paid<>round(basic/12,2) then raise exception 'thirteenth entitlement requires reconciliation' using errcode='P0001';end if;
+ avail:=(a.payload->>'available')::numeric;
+ if avail>s.net then raise exception 'available final compensation exceeds accrual' using errcode='22023';end if;
+ j:=app.ph_annual_adjustment(e,e,'termination',t,0,w,0,avail,a.evidence);
+ insert into app.ph_annual_settlement(organization_id,user_id,tax_year,final_period,attestation_id,result,recorded_by,final_revision)
+ values(p_org,p_user,2026,p_start,a.id,j,auth.uid(),s.revision);
+ insert into public.audit_events(organization_id,actor_id,action,entity,entity_id,data)
+ values(p_org,auth.uid(),'accounting.ph_cutoff_final','membership',p_user::text,jsonb_build_object('period',p_start,'revision',s.revision));
+ return j;
+end $$;
+revoke all on function app.ph_record_cutoff_final(uuid,uuid,date) from public,anon,authenticated,service_role;
+
+create or replace function app.ph_record_annual_settlement_2026(p_org uuid,p_user uuid,p_final_period date)
+returns jsonb language plpgsql set search_path='' as $$
+declare a app.ph_payroll_attestation; prior jsonb; s app.ph_monetary_snapshot; taxable numeric; withheld numeric; j jsonb; avail numeric;
+begin
+ perform app.accounting_tenant_lock(p_org);
+ if auth.uid() is null or auth.uid()=p_user or not app.has_permission(p_org,'payroll.prepare') or not app.has_permission(p_org,'timesheet.lock') then raise exception 'forbidden' using errcode='42501'; end if;
+ if app.ph_unresolved_reversal(p_org,p_user) then raise exception 'unresolved reversal' using errcode='P0001';end if;
+ if exists(select 1 from app.ph_monetary_snapshot where organization_id=p_org and user_id=p_user and frequency<>'weekly') then return app.ph_record_cutoff_final(p_org,p_user,p_final_period);end if;
+ if exists(select 1 from app.ph_canonical_reversal where organization_id=p_org and user_id=p_user) then raise exception 'weekly correction requires settlement review' using errcode='P0001';end if;
+ a:=app.ph_approved_evidence(p_org,p_user,'annual',p_final_period);
+ prior:=app.ph_prior_employer_2026(p_org,p_user);
+ select * into s from app.ph_monetary_snapshot where organization_id=p_org and user_id=p_user and period_start=p_final_period;
+ if not found or s.pay_date>date '2026-11-24' or exists(select 1 from app.ph_monetary_snapshot x where x.organization_id=p_org and x.user_id=p_user and x.period_start>p_final_period) then raise exception 'final period incomplete' using errcode='P0001'; end if;
+ if a.payload->>'reason'='termination' and not exists(select 1 from public.memberships where organization_id=p_org and user_id=p_user and status='ended') then raise exception 'termination evidence missing' using errcode='P0001'; end if;
+ if exists(select 1 from app.ph_benefit_event b where b.organization_id=p_org and b.user_id=p_user and b.tax_year=2026 and not exists(select 1 from app.ph_monetary_snapshot x where x.organization_id=p_org and x.user_id=p_user and b.paid_on between x.period_start and x.pay_date)) then raise exception 'unreconciled benefit event' using errcode='P0001'; end if;
+ avail:=(a.payload->>'available')::numeric;
+ if avail>s.net then raise exception 'available final compensation exceeds snapshot' using errcode='22023'; end if;
+ select sum(x.taxable),sum(x.withholding) into taxable,withheld from app.ph_monetary_snapshot x where x.organization_id=p_org and x.user_id=p_user and extract(year from x.pay_date)=2026;
+ j:=app.ph_annual_adjustment(s.pay_date,s.pay_date,a.payload->>'reason',taxable,(prior->>'taxable')::numeric,withheld,(prior->>'withheld')::numeric,avail,a.evidence);
+ insert into app.ph_annual_settlement(organization_id,user_id,tax_year,final_period,attestation_id,result,recorded_by)
+ values(p_org,p_user,2026,p_final_period,a.id,j,auth.uid());
+ insert into public.audit_events(organization_id,actor_id,action,entity,entity_id,data)
+ values(p_org,auth.uid(),'accounting.ph_annual_settlement_candidate','membership',p_user::text,jsonb_build_object('period',p_final_period));
+ return j;
+end $$;

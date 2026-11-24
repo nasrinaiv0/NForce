@@ -291,3 +291,5 @@ Copy and complete for each meaningful change:
 - Before commit: actual parent screenshot audit, separate PR21 test fix, canonical latest-cutoff revision replay, effective reports and internal CSV, mobile KPI layout. General entitlement and annual cutoff settlement remain gated. No hosted changes.
 
 - Initial #23 database job 138191355891 passed. Before commit: add explicit two-connection replay contention using disposable DB and verify one replacement/audit. No hosted changes.
+
+- Before final-settlement commit: extend only ordinary reviewed cutoff resignation with full effective YTD, 13th ledger and contribution allocation completeness; retain weekly route, no other entitlement or payment enabled. Refactor common fixture and add final annual journal/report regression.
