@@ -99,3 +99,6 @@ See [revision candidate](p1-2-revision-settlement.md). Restricted replay and int
 
 ## P1.3
 See [statutory reconciliation](p1-3-statutory-reconciliation.md) for weekly revision replay and limited BIR 1601-C worksheet validation; not official filing certification.
+
+## P1.4
+See [statutory journals](p1-4-statutory-journals.md): restricted reviewed accruals and receipts; actual eligibility, integrated compensation and official agency uploads remain gated.
