@@ -12,7 +12,7 @@ import { liveConfigured, supabase } from '@/data/supabase';
 import { useTheme } from '@/design/theme';
 import { useI18n } from '@/i18n';
 import { activeWorkspace, backendStore, useBackend } from '@/state/backend';
-import { usePreference } from '@/state/preferences';
+import { preferencesStore,usePreference } from '@/state/preferences';
 
 const copy = {
  en: { title:'Personal payroll', hint:'Only your released payroll amounts and employee deductions. This is an accrual review, not proof of payment.', date:'Period start (YYYY-MM-DD)', check:'Check my payroll', unavailable:'No released personal payroll is available for this period.', gross:'Gross pay', sss:'My SSS', ph:'My PhilHealth', pi:'My Pag-IBIG', ee:'My total contributions', tax:'Withholding tax', net:'Net pay', demo:'Demo only — personal payroll is not published.' },
@@ -57,7 +57,7 @@ export function PersonalPayrollReview() {
  const [exporting,setExporting]=useState(false);
  const [exportError,setExportError]=useState(false);
  const isLive=backend==='live'&&liveConfigured&&state.auth==='signed_in'&&user!==undefined&&org!==undefined;
- const stillAuthorized=()=>{const current=backendStore.get();return current.auth==='signed_in'&&current.userId===user&&activeWorkspace(current)?.organizationId===org;};
+ const stillAuthorized=()=>{const current=backendStore.get();return preferencesStore.get().backend==='live'&&current.auth==='signed_in'&&current.userId===user&&activeWorkspace(current)?.organizationId===org;};
  const history=useQuery({queryKey:['nforce','personal-history-2026',user,org],enabled:isLive,retry:false,gcTime:0,staleTime:0,refetchOnMount:'always',refetchInterval:15000,queryFn:async()=>{
   if(org===undefined||user===undefined)throw new Error('Unavailable');
   const {data,error}=await supabase().rpc('payroll_self_history',{p_organization_id:org,p_year:2026});
@@ -67,7 +67,7 @@ export function PersonalPayrollReview() {
  const h=isLive&&!history.isFetching&&!history.isError?history.data:undefined;
  const demoSummary={organizationId:'00000000-0000-4000-8000-000000000001',userId:'00000000-0000-4000-8000-000000000002',periodStart:'2026-02-01',periodEnd:'2026-02-28',revision:1,source:'released-personal-accrual-v1' as const,grossCents:'3000000',sssEmployeeCents:'150000',philhealthEmployeeCents:'75000',pagibigEmployeeCents:'20000',employeeContributionCents:'245000',withholdingCents:'100755',netCents:'2654245'};
  const exportPdf=async()=>{
-  if(Platform.OS!=='web'||exporting)return;
+  if(exporting)return;
   setExporting(true);setExportError(false);
   try{
    let fresh:PersonalPayrollDetail;
@@ -79,9 +79,18 @@ export function PersonalPayrollReview() {
     fresh=parsePersonalPayrollDetail(data,org,user,liveData.summary.periodStart);
     if(fresh.summary.revision!==liveData.summary.revision)throw new Error('Revision changed');
    }
-   const blob=new Blob([buildPayslipPdf(fresh,backend==='demo')],{type:'application/pdf'});
-   const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=(backend==='demo'?'sample-':'')+'nforce-payslip-'+fresh.summary.periodStart+'-r'+fresh.summary.revision+'.pdf';
-   try{document.body.appendChild(a);a.click();}finally{a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+   const authorized=()=>backend==='demo'?preferencesStore.get().backend==='demo':stillAuthorized();
+   if(!authorized())throw new Error('Unavailable');
+   const filename=(backend==='demo'?'sample-':'')+'nforce-payslip-'+fresh.summary.periodStart+'-r'+fresh.summary.revision+'.pdf';
+   const pdf=buildPayslipPdf(fresh,backend==='demo');
+   if(Platform.OS==='web'){
+    const blob=new Blob([pdf],{type:'application/pdf'});
+    const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;
+    try{document.body.appendChild(a);a.click();}finally{a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+   }else{
+    const {shareNativePayslip}=await import('@/lib/shareNativePayslip');
+    await shareNativePayslip(pdf,filename,authorized);
+   }
   }catch{setExportError(true);}finally{setExporting(false);}
  };
  const historyCard=(<Card style={{gap:t.space.md}}>
@@ -132,8 +141,8 @@ export function PersonalPayrollReview() {
    </Card>
    <Card style={{gap:t.space.sm}}>
     <Text variant="footnote" color="textSecondary">{l.pdfNotice}</Text>
-    <Button title={l.pdf} loading={exporting} disabled={Platform.OS!=='web'||exporting} onPress={()=>void exportPdf()}/>
-    {Platform.OS!=='web'&&<Text variant="footnote" color="textSecondary">{l.webOnly}</Text>}
+    <Button title={Platform.OS==='web'?l.pdf:l.share} loading={exporting} disabled={exporting} onPress={()=>void exportPdf()}/>
+    {Platform.OS!=='web'&&<Text variant="footnote" color="textSecondary">{l.shareNotice}</Text>}
     {exportError&&<Text variant="footnote" color="danger">{l.unavailable}</Text>}
    </Card>
 {historyCard}
@@ -287,7 +296,7 @@ function PayrollEvidence({detail,grossCents,periodStart,periodEnd,revision,deduc
 }
 
 const lifecycle={
- en:{history:'Payslip history',ytd:'Year-to-date · released accruals',coverage:'Only effective released periods. Not a complete annual tax statement.',periods:'Released periods',view:'View payslip',unavailable:'Unavailable. Refresh and try again.',pdf:'Download confidential PDF',pdfNotice:'Private local copy. Keep it secure; it is not proof of payment.',webOnly:'PDF download is available in the web app.',dispute:'Question this item',submitted:'Dispute submitted',reason:'Describe the issue (10–500 characters). Do not include government ID or bank details.',demoDispute:'Fictional preview. Submission is disabled.',submit:'Submit dispute',cancel:'Cancel'},
- fil:{history:'Kasaysayan ng payslip',ytd:'Kabuuan sa taon · inilabas na tala',coverage:'Mga inilabas na period lamang. Hindi kumpletong taunang tax statement.',periods:'Mga period',view:'Tingnan ang payslip',unavailable:'Hindi available. Subukan muli.',pdf:'I-download ang pribadong PDF',pdfNotice:'Pribadong kopya. Ingatan ito; hindi patunay ng bayad.',webOnly:'Available ang PDF sa web app.',dispute:'Tanungin ang item na ito',submitted:'Naipasa ang dispute',reason:'Ilarawan ang problema (10–500 karakter). Huwag ilagay ang government ID o bank details.',demoDispute:'Halimbawa lamang. Hindi maaaring mag-submit.',submit:'Isumite ang dispute',cancel:'Kanselahin'},
- es:{history:'Historial de nómina',ytd:'Acumulado anual · importes publicados',coverage:'Solo períodos efectivos publicados. No es una declaración fiscal anual completa.',periods:'Períodos publicados',view:'Ver nómina',unavailable:'No disponible. Actualice e inténtelo de nuevo.',pdf:'Descargar PDF confidencial',pdfNotice:'Copia local privada. Protéjala; no acredita el pago.',webOnly:'Descarga PDF disponible en la web.',dispute:'Consultar este concepto',submitted:'Reclamación enviada',reason:'Describa el problema (10–500 caracteres). No incluya identificadores oficiales ni datos bancarios.',demoDispute:'Solo ejemplo. Envío deshabilitado.',submit:'Enviar reclamación',cancel:'Cancelar'},
+ en:{history:'Payslip history',ytd:'Year-to-date · released accruals',coverage:'Only effective released periods. Not a complete annual tax statement.',periods:'Released periods',view:'View payslip',unavailable:'Unavailable. Refresh and try again.',pdf:'Download confidential PDF',pdfNotice:'Private local copy. Keep it secure; it is not proof of payment.',share:'Share confidential PDF',shareNotice:'Choose a trusted recipient. Shared copies may remain outside the app.',dispute:'Question this item',submitted:'Dispute submitted',reason:'Describe the issue (10–500 characters). Do not include government ID or bank details.',demoDispute:'Fictional preview. Submission is disabled.',submit:'Submit dispute',cancel:'Cancel'},
+ fil:{history:'Kasaysayan ng payslip',ytd:'Kabuuan sa taon · inilabas na tala',coverage:'Mga inilabas na period lamang. Hindi kumpletong taunang tax statement.',periods:'Mga period',view:'Tingnan ang payslip',unavailable:'Hindi available. Subukan muli.',pdf:'I-download ang pribadong PDF',pdfNotice:'Pribadong kopya. Ingatan ito; hindi patunay ng bayad.',share:'I-share ang pribadong PDF',shareNotice:'Pumili ng pinagkakatiwalaang tatanggap. Maaaring manatili ang kopya sa labas ng app.',dispute:'Tanungin ang item na ito',submitted:'Naipasa ang dispute',reason:'Ilarawan ang problema (10–500 karakter). Huwag ilagay ang government ID o bank details.',demoDispute:'Halimbawa lamang. Hindi maaaring mag-submit.',submit:'Isumite ang dispute',cancel:'Kanselahin'},
+ es:{history:'Historial de nómina',ytd:'Acumulado anual · importes publicados',coverage:'Solo períodos efectivos publicados. No es una declaración fiscal anual completa.',periods:'Períodos publicados',view:'Ver nómina',unavailable:'No disponible. Actualice e inténtelo de nuevo.',pdf:'Descargar PDF confidencial',pdfNotice:'Copia local privada. Protéjala; no acredita el pago.',share:'Compartir PDF confidencial',shareNotice:'Elija un destinatario de confianza. Las copias pueden permanecer fuera de la app.',dispute:'Consultar este concepto',submitted:'Reclamación enviada',reason:'Describa el problema (10–500 caracteres). No incluya identificadores oficiales ni datos bancarios.',demoDispute:'Solo ejemplo. Envío deshabilitado.',submit:'Enviar reclamación',cancel:'Cancelar'},
 } as const;
