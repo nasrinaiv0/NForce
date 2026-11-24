@@ -20,6 +20,9 @@ trap cleanup EXIT
 PSQL=("${RUN_AS[@]}" "$PGBIN/psql" -h "$WORK" -p "$PORT" -U postgres -d postgres -X -q -v ON_ERROR_STOP=1)
 
 "${PSQL[@]}" -f "$ROOT/supabase/tests/local_auth_shim.sql"
+# Supabase identifies migrations by the numeric prefix. Reject duplicate versions before execution.
+duplicates="$(for f in "$ROOT"/supabase/migrations/*.sql; do basename "$f" | cut -d_ -f1; done | sort | uniq -d)"
+test -z "$duplicates" || { printf 'duplicate migration versions: %s\n' "$duplicates"; exit 1; }
 for f in "$ROOT"/supabase/migrations/*.sql; do
   echo "applying $(basename "$f")"
   "${PSQL[@]}" -f "$f"
@@ -28,4 +31,31 @@ for f in "$ROOT"/supabase/tests/*.test.sql; do
   echo "running $(basename "$f")"
   "${PSQL[@]}" -f "$f" 2>&1 | sed -n 's/.*NOTICE:  //p; /ERROR/p'
 done
+
+# P0.3 two-connection contention test. Same throwaway socket only; no remote URL.
+echo "running P0.3 independent-connection contention"
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p0_3_fixture.sql" >/dev/null
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p0_3_race.sql" >"$WORK/race-a.log" 2>&1 & A=$!
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p0_3_race.sql" >"$WORK/race-b.log" 2>&1 & B=$!
+FAIL=0
+wait "$A" || FAIL=1
+wait "$B" || FAIL=1
+cat "$WORK/race-a.log" "$WORK/race-b.log"
+test "$FAIL" -eq 0
+test "$(grep -h -c 'P03_RACE_WIN' "$WORK"/race-*.log | awk '{n+=$1} END{print n}')" -eq 1
+test "$(grep -h -c 'P03_RACE_ALREADY_LOCKED' "$WORK"/race-*.log | awk '{n+=$1} END{print n}')" -eq 1
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p0_3_race_verify.sql"
+
+# Concurrent distinct benefit events must share a monthly exemption bucket.
+"${PSQL[@]}" -f "$ROOT/supabase/tests/ph_benefit_race_seed.sql" >/dev/null
+"${PSQL[@]}" -v benefit_key=benefit-race-a -f "$ROOT/supabase/tests/ph_benefit_race.sql" >"$WORK/benefit-a.log" 2>&1 & A=$!
+"${PSQL[@]}" -v benefit_key=benefit-race-b -f "$ROOT/supabase/tests/ph_benefit_race.sql" >"$WORK/benefit-b.log" 2>&1 & B=$!
+FAIL=0
+wait "$A" || FAIL=1
+wait "$B" || FAIL=1
+cat "$WORK/benefit-a.log" "$WORK/benefit-b.log"
+test "$FAIL" -eq 0
+# Replay the identical event key without consuming the exemption again.
+"${PSQL[@]}" -v benefit_key=benefit-race-a -f "$ROOT/supabase/tests/ph_benefit_race.sql" >/dev/null
+"${PSQL[@]}" -f "$ROOT/supabase/tests/ph_benefit_race_verify.sql"
 echo "database tests passed"
