@@ -38,5 +38,5 @@ select app.ph_approve_payroll_evidence(pg_temp.org(),(select id from ev where ki
 select set_config('request.jwt.claim.sub',pg_temp.u(1)::text,true);
 select pg_temp.expect((app.ph_record_annual_settlement_2026(pg_temp.org(),pg_temp.u(2),'2026-01-12')->>'refund')::numeric=1000,'annual settlement uses verified prior withholding');
 select pg_temp.expect((select count(*)=1 from app.ph_annual_settlement),'annual settlement persisted once');
-select pg_temp.denied($update app.ph_annual_settlement set result='{}'$,'42501','annual settlement immutable');
+select pg_temp.denied($$update app.ph_annual_settlement set result='{}'$$,'42501','annual settlement immutable');
 rollback;
