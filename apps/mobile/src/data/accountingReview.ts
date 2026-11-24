@@ -67,7 +67,7 @@ const detailItem = z.strictObject({
  method: z.enum(['monthly_increment','hourly_factor','salary_allocation','recorded_benefit','recorded_amount','period_total_only']),
 });
 const personalDetailSchema = z.strictObject({
- summary: personalPayrollSchema, frequency: z.enum(['daily','weekly','semi_monthly','monthly']),
+ summary: personalPayrollSchema, frequency: z.enum(['daily','weekly','semi-monthly','monthly']),
  exemptCents: cents, taxableCents: cents, taxDeductibleCents: cents, basicCents: cents.nullable(), premiumCents: cents.nullable(),
  items: z.array(detailItem).max(10000), paymentConfirmed: z.literal(false),
 }).refine(d=>BigInt(d.summary.grossCents)===BigInt(d.exemptCents)+BigInt(d.taxableCents)+BigInt(d.taxDeductibleCents) && BigInt(d.taxDeductibleCents)<=BigInt(d.summary.employeeContributionCents) && d.items.every(i=>i.date===null || (i.date>=d.summary.periodStart&&i.date<=d.summary.periodEnd)));

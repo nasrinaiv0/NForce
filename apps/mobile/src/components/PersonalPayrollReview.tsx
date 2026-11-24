@@ -58,7 +58,7 @@ export function PersonalPayrollReview() {
         <Text variant="body">{label}</Text><Text variant="body" tabular weight="600">{formatPhpCents(value ?? '0')}</Text>
        </View>)}
     </View>}
-   {data !== undefined && <PayrollEvidence detail={backend==='demo'?fictionalDetail:liveData} />}
+   {data !== undefined && <PayrollEvidence detail={backend==='demo'?fictionalDetail:liveData} periodStart={backend==='demo'?'2026-02-01':liveData?.summary.periodStart} periodEnd={backend==='demo'?'2026-02-28':liveData?.summary.periodEnd} />}
  </Card>;
 }
 
@@ -71,7 +71,7 @@ const labels = {
  fil:{heading:'Detalye ng payslip',period:'Dalas ng payroll',payment:'Hindi kumpirmado ang bayad',base:'Batayang sahod',premium:'Premium pay',exempt:'Kita na walang buwis',deductible:'Kontribusyong bawas sa buwis',taxable:'Kita na may buwis',what:'Ano',when:'Kailan',where:'Saan',time:'Oras',how:'Paano',amount:'Naitalang halaga (PHP bago rounding)',unknown:'Walang tala',monthly_increment:'Hourly rate × oras × (multiplier − 1); hiwalay ang batayang sahod',hourly_factor:'Hourly rate × oras × multiplier',salary_allocation:'Naitalang hatian ng sahod',recorded_benefit:'Naitalang benepisyo',recorded_amount:'Naitalang halaga',period_total_only:'Kasama sa period; walang hiwalay na halaga',show:'Ipakita ang tala ng trabaho at kita',hide:'Itago ang tala',notice:'Mga naitalang oras at dating worksite reference, hindi GPS. Walang kumpirmadong petsa o paraan ng bayad.',total:'Gross − kontribusyon ng empleyado − withholding = net pay'},
  es:{heading:'Detalle de nómina',period:'Frecuencia de nómina',payment:'Pago no confirmado',base:'Salario base',premium:'Prima salarial',exempt:'Ingresos exentos',deductible:'Contribuciones deducibles',taxable:'Ingresos imponibles',what:'Qué',when:'Cuándo',where:'Dónde',time:'Tiempo',how:'Cómo',amount:'Importe registrado (PHP, antes del redondeo)',unknown:'No registrado',monthly_increment:'Tarifa × horas × (multiplicador − 1); salario base separado',hourly_factor:'Tarifa × horas × multiplicador',salary_allocation:'Asignación salarial registrada',recorded_benefit:'Prestación registrada',recorded_amount:'Importe registrado',period_total_only:'Incluido en el período; sin importe separado',show:'Mostrar trabajo e ingresos',hide:'Ocultar trabajo e ingresos',notice:'Instantes registrados y referencia histórica del lugar, no GPS. Sin fecha ni canal de pago confirmado.',total:'Bruto − contribuciones del empleado − retención = neto'},
 } as const;
-function PayrollEvidence({detail}:{detail:typeof fictionalDetail|undefined}) {
+function PayrollEvidence({detail,periodStart,periodEnd}:{detail:typeof fictionalDetail|undefined;periodStart:string|undefined;periodEnd:string|undefined}) {
  const t=useTheme(),i18n=useI18n(),c=labels[i18n.locale];
  const [open,setOpen]=useState(false);
  if(!detail)return null;
@@ -80,6 +80,7 @@ function PayrollEvidence({detail}:{detail:typeof fictionalDetail|undefined}) {
  return <View style={{gap:t.space.md,borderTopWidth:1,borderTopColor:t.colors.separator,paddingTop:t.space.md}}>
   <Text variant="headline" accessibilityRole="header">{c.heading}</Text>
   <Text variant="footnote" color="textSecondary">{c.payment}</Text>
+  {row(c.when,periodStart!==undefined&&periodEnd!==undefined?periodStart+' – '+periodEnd:c.unknown)}
   {row(c.period,detail.frequency)}
   {[ [c.base,detail.basicCents],[c.premium,detail.premiumCents],[c.exempt,detail.exemptCents],[c.deductible,detail.taxDeductibleCents],[c.taxable,detail.taxableCents] ].map(([label,value])=>row(label??'',value==null?c.unknown:formatPhpCents(value)))}
   <Text variant="footnote" color="textSecondary">{c.total}</Text>
@@ -90,7 +91,7 @@ function PayrollEvidence({detail}:{detail:typeof fictionalDetail|undefined}) {
     {row(c.what,item.code)}
     {row(c.when,item.date??c.unknown)}
     {row(c.where,item.siteReference??c.unknown)}
-    {row(c.time,item.seconds===null?c.unknown:`${item.seconds} s`)}
+    {row(c.time,item.seconds===null?c.unknown:`${Math.floor(Number(item.seconds)/3600)}h ${Math.floor(Number(item.seconds)%3600/60)}m (${item.seconds} s)`)}
     {item.start!==null&&row('Start (ISO)',item.start)}
     {item.end!==null&&row('End (ISO)',item.end)}
     {row(c.amount,decimal(item.recordedAmount))}

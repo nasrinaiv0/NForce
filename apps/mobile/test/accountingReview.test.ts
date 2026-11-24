@@ -38,6 +38,7 @@ describe('personal payroll response allowlist',()=>{
 const personalDetail={summary:personal,frequency:'monthly',exemptCents:'0',taxableCents:'2755000',taxDeductibleCents:'245000',basicCents:'3000000',premiumCents:'0',paymentConfirmed:false,items:[{date:'2026-02-02',code:'REG',start:null,end:null,seconds:'28800',hourlyRate:'123.2876712328767123',multiplier:'1',recordedAmount:null,siteReference:'fictional-site',method:'monthly_increment'}]};
 describe('personal payroll detailed contract',()=>{
  it('accepts verified period evidence without inventing payment',()=>expect(parsePersonalPayrollDetail(personalDetail,org,employee,'2026-02-01').items[0]?.seconds).toBe('28800'));
+ it('accepts the canonical semi-monthly server frequency',()=>expect(parsePersonalPayrollDetail({...personalDetail,frequency:'semi-monthly'},org,employee,'2026-02-01').frequency).toBe('semi-monthly'));
  it('rejects additional sensitive fields even inside a line',()=>{
    expect(()=>parsePersonalPayrollDetail({...personalDetail,items:[{...personalDetail.items[0],employerCost:'1000'}]},org,employee,'2026-02-01')).toThrow();
    expect(()=>parsePersonalPayrollDetail({...personalDetail,rawEvidence:{}},org,employee,'2026-02-01')).toThrow();

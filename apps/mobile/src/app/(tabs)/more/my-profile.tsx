@@ -1,5 +1,4 @@
 import { router, type Href } from 'expo-router';
-import { View } from 'react-native';
 import { Avatar, Pill } from '@/components/Display';
 import { LoadingBlock, Screen, ErrorState } from '@/components/Screen';
 import { Card, ListRow, ListSection } from '@/components/Surface';
@@ -8,14 +7,15 @@ import { personalNavigation } from '@/data/personalNavigation';
 import { useSession } from '@/data/queries';
 import { useTheme } from '@/design/theme';
 import { useI18n } from '@/i18n';
-import { useBackend, activeWorkspace } from '@/state/backend';
+import { useBackend } from '@/state/backend';
 import { usePreference } from '@/state/preferences';
 
 export default function MyProfileScreen(){
  const i18n=useI18n(),t=useTheme(),c=personalNavigation[i18n.locale];
  const session=useSession(),backend=usePreference('backend'),persona=usePreference('persona');
  const state=useBackend(s=>s);
- const workspace=activeWorkspace(state);
+ const selected=usePreference('workspaceId');
+ const workspace=state.workspaces?.find(w=>w.organizationId===selected)??state.workspaces?.[0];
  const current=session.data;
  const valid=current!==undefined&&(backend==='demo'?current.role===persona:state.auth==='signed_in'&&current.user.id===state.userId&&current.organization.id===workspace?.organizationId&&current.role===workspace?.role);
  if(session.isError)return <Screen><ErrorState message={i18n.t('common.errorBody')} onRetry={()=>void session.refetch()}/></Screen>;
