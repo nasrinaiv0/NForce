@@ -9,8 +9,9 @@ const assert = require('node:assert/strict');
       page.on('pageerror', error => errors.push(error.message));
       // No external requests or hosted tenant credentials in this acceptance.
       await page.route('**/*', route => route.request().url().startsWith('http://127.0.0.1:8765/') ? route.continue() : route.abort());
+      await page.addInitScript(() => localStorage.setItem('nforce.preferences.v2', JSON.stringify({backend:'demo',persona:'owner',locale:'en',reduceMotion:true})));
       await page.goto('http://127.0.0.1:8765/',{waitUntil:'domcontentloaded'});
-      await page.waitForFunction(() => document.body.innerText.trim().length > 30, {timeout:30000});
+      await page.getByText(/Good (morning|afternoon|evening)/i).first().waitFor({timeout:30000});
       await page.screenshot({path:'/tmp/nforce-browser/screenshots/'+name+'.png', fullPage:true});
       const body = await page.locator('body').innerText();
       assert.ok(body.trim().length > 30, 'nonempty app content');

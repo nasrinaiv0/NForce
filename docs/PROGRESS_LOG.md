@@ -286,3 +286,5 @@ Copy and complete for each meaningful change:
 - PR21 initial head de9e705a, CI 45314339092: SQL parser rejected collapsed dollar delimiters in the two thin posting/replay SQL wrappers (JavaScript replacement expansion). Restore paired dollar quotes literally; leave calculation/guards unchanged. Six independent Decimal assertions passed. Recheck exact replacement head. No remote SQL.
 
 - CI 45314418156: migrations and inherited fixtures ran, new P0.9 period test hit ambiguous gross column in PL/pgSQL YTD aggregate. Qualify active-ledger fields explicitly; retain calculations, assertions and authorization. Recheck exact head.
+
+- 2026-11-24: downloaded exact-head artifact 14885252895; both screenshots showed navigation shell without Home content despite green smoke. Before commit, strengthen test using isolated fictional demo owner and real greeting assertion. No payroll changes or production writes.
