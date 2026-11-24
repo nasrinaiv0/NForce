@@ -285,3 +285,13 @@ describe('live backend', () => {
     expect((await api.attendanceReport({ scope: 'org', weeks: 8 })).metrics.headcount).toBeGreaterThan(0);
   });
 });
+
+// P0: live accounting stays closed even if a client has access to a workspace.
+describe('P0 accounting release gate', () => {
+  it('denies live submission and locking without making a database call', async () => {
+    const client = new Proxy({}, { get: () => { throw new Error('Database must not be called'); } }) as SupabaseClient;
+    const api = createLiveApi({ client, workspace, userId: U(4), now: () => NOW });
+    await expect(api.timesheetAction('submit', '2026-11-23' as Parameters<typeof api.timesheetAction>[1])).rejects.toMatchObject({ code: 'forbidden' });
+    await expect(api.lockPayroll('2026-11-23' as Parameters<typeof api.lockPayroll>[0])).rejects.toMatchObject({ code: 'forbidden' });
+  });
+});

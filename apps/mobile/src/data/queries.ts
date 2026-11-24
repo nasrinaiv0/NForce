@@ -30,7 +30,17 @@ let live: { key: string; api: NForceApi } | undefined;
 export function currentApi(): NForceApi {
   const state = backendStore.get();
   const workspace = activeWorkspace(state);
-  if (!isLive() || state.userId === undefined || workspace === undefined) return demoApi;
+  if (preferencesStore.get().backend === 'demo') {
+    live = undefined;
+    return demoApi;
+  }
+  if (!isLive() || state.auth !== 'signed_in' || state.userId === undefined || workspace === undefined) {
+    live = undefined;
+    // Return asynchronous failures; query hooks must not throw while rendering.
+    return new Proxy({} as NForceApi, {
+      get: () => async () => { throw new ApiError('forbidden', 'Live workspace unavailable. Sign in or restore your connection.'); },
+    });
+  }
   const key = `${state.userId}|${workspace.organizationId}`;
   if (live?.key !== key) live = { key, api: createLiveApi({ client: supabase(), workspace, userId: state.userId, source: Platform.OS === 'web' ? 'web' : 'mobile' }) };
   return live.api;

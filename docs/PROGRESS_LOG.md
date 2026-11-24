@@ -210,3 +210,9 @@ Copy and complete for each meaningful change:
 - **Security/data/accessibility/performance implications:**
 - **Known gaps/blockers:**
 - **Next steps:**
+
+## 2026-11-24 — P0 staging safety containment
+
+- **Status:** Implemented for review; exact-head CI and isolated hosted acceptance pending. No remote migration, production configuration or merge authorized.
+- **Scope:** Preserve demo; contain unverified live accounting writes and tighten credential/session handling, client mode selection and hosting headers. This is a safety gate, not payroll certification.
+- **Validation plan:** Run existing CI, SQL denial assertions, browser and device acceptance with fictional tenants. Native secure persistence, historical roster/pay policy, server reconciliation, branch protection and independent review remain release gates. See [P0 acceptance plan](release/p0-acceptance.md).
