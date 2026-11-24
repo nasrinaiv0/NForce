@@ -224,3 +224,9 @@ Copy and complete for each meaningful change:
 - **Status:** Implementation staged; exact-head validation pending. Based on PR #3 7ce31805b417284da51815f36b0fdb56a1063c44. No production change or remote SQL.
 - **Scope:** Sealed historical roster manifest, server punch replay and OT reconciliation, private timesheet submission via existing approval chain, atomic payroll lock with immutable evidence; retain public release gates. See [P0.2 design and acceptance](release/p0-2-accounting.md).
 - **Validation plan:** Disposable SQL fixture and all existing CI, preview build, independent accounting/security review. Known gaps: authoritative roster import/lifecycle, premium pay codes, correction/adjustment policy, native acceptance and contention tests.
+
+## 2026-11-24 — PH statutory compliance P1
+
+- Status: planning recorded before code commit; candidate only. Stacked on PR #4 0384bfa8372ae5934536f55c65b3987bc2286d72; parent CI and preview builds passed. See [gap register](release/ph-payroll-compliance-register.md).
+- Scope: private exact NUMERIC taxable-compensation arithmetic, official BIR Annex E periodic and TRAIN annual tables, date and input guards, disposable SQL fixtures. No public RPC, UI, gross-to-net, payment or remote migration. Daily upper bracket intentionally fails closed because source is malformed.
+- Validation plan: SQL boundaries, rounding, invalid inputs and privileges in throwaway DB CI; independent CPA confirmation and isolated hosted acceptance pending. Full source tree and legal review remain incomplete. No merges or production change.
