@@ -263,3 +263,7 @@ Copy and complete for each meaningful change:
 - Initial SQL run 138171893251 reproduced PL/pgSQL ambiguity between workday record variable and join alias. Renamed record, retained qualified attendance join; updated outdated 2026 PhilHealth reject fixture to December cutoff. Added prior-certificate and annual settlement tests and dependency-free authenticated AES-GCM envelope utility with tampering and cross-tenant tests. No production wiring.
 
 - Exact-head job 138172434982 passed gross/net, prior certificate and annual refund assertions, then hit a malformed dollar-quoted immutability test. Corrected the test delimiter only. Python Decimal independently matched gross PHP1211.25, net PHP611.25, annual refund PHP1000.00 and balanced PHP2071.25. Recheck full suite on replacement head.
+
+## 2026-11-24 — P0.9 private settlement candidate
+
+- Parent #14/#16 core, native JS and Chromium passed with screenshot artifacts; #17 core/database/web passed, remaining acceptance pending. Documented full-month salary limitations, approved leave usage, independent settlement journal, remittance reconciliation, retention/key review before commit. No hosted changes.
