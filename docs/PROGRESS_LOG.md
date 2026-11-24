@@ -293,3 +293,6 @@ Copy and complete for each meaningful change:
 - Initial #23 database job 138191355891 passed. Before commit: add explicit two-connection replay contention using disposable DB and verify one replacement/audit. No hosted changes.
 
 - Before final-settlement commit: extend only ordinary reviewed cutoff resignation with full effective YTD, 13th ledger and contribution allocation completeness; retain weekly route, no other entitlement or payment enabled. Refactor common fixture and add final annual journal/report regression.
+
+## P1.3 — 2026-11-24
+Before commit: parent exact-head checks and actual screenshots reviewed; canonical weekly replay and effective final revision, restricted BIR Part II validator, tests and remaining legal gates documented. No hosted changes.
