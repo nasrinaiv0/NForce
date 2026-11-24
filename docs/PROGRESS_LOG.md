@@ -298,3 +298,5 @@ Copy and complete for each meaningful change:
 Before commit: parent exact-head checks and actual screenshots reviewed; canonical weekly replay and effective final revision, restricted BIR Part II validator, tests and remaining legal gates documented. No hosted changes.
 
 - Initial P1.3 DB job 138196314854 passed weekly replay and form math. Before commit: extend same cutoff calculator to full monthly periods, reviewed monthly salary/divisor and overlap checks; test monthly replacement and canonical 13th accrual duplicate denial. No new monetary engine or remote changes.
+
+- DB 138197003461 passed. Before commit: actual worksheet against effective reviewed month, staff denial, weekly final revision and monthly concurrent replay assertions. Python Decimal independently verified PHP26542.45 and PHP27392.45. No hosted changes.
