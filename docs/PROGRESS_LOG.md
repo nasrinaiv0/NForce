@@ -264,3 +264,5 @@ Copy and complete for each meaningful change:
 - Test numeric and authority boundaries, idempotency, locks, cross-tenant, no public grants, CPA/legal/security and Claude review (not executed). No release claim. New migration prefixes 20261209+; verify duplicate guard. Hosted/browser and real-device acceptance remain pending.
 
 - Before further implementation: PR11 UI base blobs match PR12, port localized accounting gate without enabling live results. Add server-only Node AES-256-GCM helper with randomized IV, authenticated org/employee/import binding, source and envelope SHA256, strict bounds and tamper tests. Caller supplies key from approved future key provider; no committed key, hosted vault or upload/download route. Fictional fixture only. Python Decimal reference: 30000 basic + 308.22 premium, 2475 EE, 4030 ER, 1050.03 tax, 26783.19 net, 34338.22 cost; cumulative cases checked. SQL and app CI not yet run.
+
+- Initial PR #15 run 45311749060: disposable migration parsing failed at cumulative CASE in IF expression. Parenthesize CASE as numeric comparison operand without altering calculation or tests; rerun exact-head CI. No remote SQL.
