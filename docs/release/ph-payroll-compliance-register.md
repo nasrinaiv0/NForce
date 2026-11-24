@@ -1,0 +1,48 @@
+# Philippine payroll compliance gap register — 2026-11-24
+Scope: ordinary PH private-sector employment only; all other classes explicitly unsupported until reviewed. Base PR #4 0384bfa8372ae5934536f55c65b3987bc2286d72, parent PR #3 7ce31805b417284da51815f36b0fdb56a1063c44, audited main reference 1e088109e6ef967b92528a2ff43eac7bcea9a3bb. Both parent exact-head CI successful, Vercel preview READY. No hosted acceptance. Sources: README, docs/architecture/enterprise-workforce-platform.md §17, docs/PROGRESS_LOG.md and PR #3/#4 diffs; code search returned no results, so absence is not conclusively established. This is a risk-based gap register, not exhaustive source-tree audit or certification. No real records, remote migration, production release, paid resources or merge.
+
+## Traceability register
+Status P = partial candidate/demo; U = unverified/not evidenced; C = candidate in this tranche only. All rows block live release until applicable evidence and reviewer approval; scope exclusions need enforceable guards. Each group must be decomposed into individual cases before production. 
+| IDs (master spec) | authority / source | evidence / status | implementation and acceptance |
+|---|---|---|---|
+| BIR-01,02 | NIRC, RR 2-98 | U | employer TIN/RDO/branch, employee TIN validation; secure field and registration tests |
+| BIR-03–06 | RR 11-2018 Annex E | C | private numeric periodic calculation; daily upper bracket malformed in source, reject; verify decimal boundary and rounding interpretation independently |
+| BIR-07–11,19–20 | RR 11-2018 | U (annual tax primitive C only) | supplementary/off-cycle, prior employer 2316, annualization/refund/deficiency and substituted filing; CPA golden cases |
+| BIR-12–18 | TRAIN, RR 29-2025, NIRC §33 | U | MWE eligibility, all de minimis caps and YTD, 90k other benefits, compensation classification, FBT, retirement/separation, mandatory contributions; signed tax-classification matrix |
+| BIR-21–27,29–32 | BIR forms and current issuances | U | 1601-C/1604-C/2316/alphalist, amended filings, remittance, penalties, filing calendars, FBT and contractor distinct scope; official format and receipt validation |
+| BIR-28,30 | NIRC §235; RMO 9-2021; RMC 5-2021 | U | source/version approval, retention/legal hold, CAS/CBA classification and taxpayer registration |
+| LAB-01–04 | Labor Code Arts 82–90 | P core pay categories, PR4 private replay | exact intervals, breaks, daily OT, ND, rest/holiday and overlaps; no unapproved OT forfeiture or minimum-block underpayment; split overnight at date/ND boundaries; compare all 32 combinations |
+| LAB-05–08 | Labor Code Arts 93–100, 103, 113; RA 6727 | P demo pay policies | region/sector wage orders with effective dates, local and national holiday proclamations, unworked holiday eligibility, lawful deductions, pay frequency, wage distortion/non-diminution |
+| HR-01–04 | Labor Code, RA 10173 | P live membership + sealed roster candidate | effective-dated salary, employment, transfers, terminations, rehire, government identifiers, bank details and tax residency; historical completeness and secure imports |
+| HR-05–08 | Labor Code, RA 11165 | P attendance & leave ledger | invites, contracts/201 file, flexible schedules, authorized corrections, remote work, employee disputes, employee self-service and confidential records |
+| BEN-01–03 | PD 851, Labor Code Art 95 | P leave ledger only | 13th month eligible salary and proration, SIL accrual/monetization, company benefits and accruals |
+| BEN-04–09 | RA 11210, 8187, 11861, 9262, 9710 | U | maternity differential/reimbursement, paternity, solo parent, VAWC, special women leave, sick/EC claims and confidentiality |
+| BEN-10–12 | RA 11360, RA 7641, Labor Code | U | service charges, retirement, all separation causes, death/beneficiary, back wages, final pay/COE deadlines |
+| GOV-01–03 | RA 11199, SSS Circular 2024-006 | U | official MSC table, regular/MPF/EC split, loans, employee/employer shares, monthly reconciliation, PRN |
+| GOV-04–06 | RA 11223, PhilHealth Circular 2020-0014 + subsequent advisories | U | basic monthly salary basis, applicable floor/ceiling, employee/employer allocation, EPRS/SPA, registration and adjustments |
+| GOV-07–09 | RA 9679, Pag-IBIG Circular 460 and subsequent rules | U | fund salary threshold, shares, loans, eSRS, employer and worker registrations, monthly reconciliation |
+| PAY-01–04 | Labor Code wage protections, accounting controls | P demo register, PR4 private lock | ordinary/off-cycle/retro/13th month/final, groups, opening balances, simulation, authorized adjustments and recovery; separate hours vs monetary lock |
+| PAY-05–08 | Labor Code payroll record rules, NIRC | U | itemized gross/net/ER cost, hours/rates/YTD and payment status, secure payslips, bank instruction idempotency/reconciliation |
+| ACC-01–06 | accounting controls, NIRC/CAS as applicable | P private hours snapshot only | balanced journal, cost centers, liabilities, accruals, loans/reimbursements, period close/reversals, GL export and opening balances |
+| SEC-01–05 | RA 10173 and IRR | P RLS, RBAC, revocations and memory-only auth | field access, maker-checker, MFA, secure sessions/downloads, encryption, cross-tenant and escalation tests, audit trails |
+| SEC-06–10 | NPC rules, NIRC §235 | U | privacy notices/DPA/DPO/PIA, registration if applicable, retention/disposal/legal hold, DSAR, breach response (72h qualifying), cross-border safeguards and restore rehearsal |
+| OPS-01–05 | applicable agency filing rules | U | compliance calendar incl local holidays/extension/channel, reports and filing receipts, statutory source monitoring, worker notices and management analytics |
+| QA-01–05 | product release controls | P CI only | exact-head CI, isolated PostgREST/Auth, concurrency, mobile desktop accessibility, load, restore, independent CPA/legal/security review and employer authorization |
+
+## Verified primary sources
+- BIR Annex E: https://bir-cdn.bir.gov.ph/local/pdf/Annex%20E%20RR%2011-2018.pdf (visual verification; daily upper base literally malformed; weekly/semi-monthly/monthly exact printed values).
+- BIR RR 29-2025: https://bir-cdn.bir.gov.ph/BIR/pdf/RR%20No.%2029-2025.pdf (signed text checked, publication/effectivity and supersession must be independently confirmed).
+- BIR official calculator https://web-services.bir.gov.ph/tax_calculator/wt_calculator.html (some de minimis labels stale; do not use as authoritative new caps).
+- SSS https://www.sss.gov.ph/sss-circulars/ (2024-006); PhilHealth https://www.philhealth.gov.ph/circulars/2020/circ2020-0014.pdf; Pag-IBIG https://www.pagibigfund.gov.ph/about_publication_circulars_memberservices.html (460; latest remittance circulars must be checked).
+- DOLE https://dole.gov.ph/book-3-conditions-of-employment/ ; NWPC https://nwpc.dole.gov.ph/ ; NPC https://privacy.gov.ph/implementing-rules-regulations-data-privacy-act-2012/ .
+- BIR RMO 9-2021 digest https://bir-cdn.bir.gov.ph/local/pdf/RMO%20No.%209-2021_Digest.pdf .
+- Legal review must independently confirm current 2026 issuances, special employee categories, exact publication dates, annual forms, filing channels and deadlines; do not assume all rules checked.
+
+## Implementation sequence and independent review
+1. P1 private BIR arithmetic candidate; no public RPC/UI changes. Use NUMERIC, input already classified taxable PHP, reject unsupported dates/frequencies, malformed daily top band. Cent handling uses lower bound until next bracket, half-up final rounding; CPA must confirm. Do not treat this as gross-to-net or annualization.
+2. P2 historical employment/pay policy + precision attendance segmentation; P3 contribution tables/monthly allocation; P4 benefits and wage/holiday registry; P5 monetary payroll snapshot, approvals, balanced journal; P6 government reports, remittance, payment idempotency; P7 privacy and acceptance. Separate stacked staging PRs; not yet implemented.
+3. CPA: independently reproduce every bracket, cent boundary, prior employer, supplemental/annualization, MWE, contribution base, earnings/deductions, benefit caps, journals and refunds. Confirm malformed daily amount through BIR. Signed evidence keyed to commit and source dates.
+4. PH labor/privacy counsel: coverage exclusions, wage orders, leave/separation, deductions, classification, CAS, data privacy/DPO/registration/retention and filing obligations. Employer acceptance required.
+5. Security: review function grants, schema exposure, search_path, tenant isolation, bypasses, old sessions, exact-head tests and preview env isolation. No real data. Do not apply migrations remotely; disposable DB only. No production secrets in preview.
+6. Claude (independent reviewer, not executed): inspect duplication, numeric and date validation, server authoritative input, architecture and all UI routes; review typography, padding, buttons, 44pt targets, keyboard/screen reader, responsive 320/390/768/1440 layouts, dark mode, reduced motion, performance. Capture fictional-data screenshots and exact-head results; no production changes.
+7. Rollback: abandon staging branch; no remote state touched. Future migration rollback requires separate approval and restore rehearsal. No weakening existing public gates. No merges.
