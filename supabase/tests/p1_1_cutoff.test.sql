@@ -95,4 +95,24 @@ select pg_temp.expect(not exists(select 1 from app.ph_canonical_reversal r join 
 select pg_temp.denied($$select app.ph_post_cutoff_2026(pg_temp.org9(1),pg_temp.u(2),'2026-09-15')$$,'P0001','reversed cutoff blocked pending replay');
 select pg_temp.expect(not has_function_privilege('authenticated','app.ph_post_cutoff_2026(uuid,uuid,date)','EXECUTE'),'private cutoff posting');
 select pg_temp.expect(not has_table_privilege('authenticated','app.ph_canonical_reversal','SELECT'),'private reversal');
+
+select pg_temp.attest(pg_temp.org9(1),'replay','2026-09-15',
+ (select a.payload||jsonb_build_object('taxableExtras',1200,'reason','correct fictional supplement','undispatched',true,'originalAttestation',a.id) from app.ph_payroll_attestation a where a.organization_id=pg_temp.org9(1) and a.kind='period'));
+select set_config('request.jwt.claim.sub',pg_temp.u(1)::text,true);
+select pg_temp.denied($$select app.ph_replay_cutoff_2026(pg_temp.org9(1),pg_temp.u(2),'2026-09-15')$$,'42501','replay maker denied');
+select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
+select pg_temp.expect((app.ph_replay_cutoff_2026(pg_temp.org9(1),pg_temp.u(2),'2026-09-15')->>'net')::numeric=4557.55,'same-engine corrected cutoff net');
+select pg_temp.expect((select count(*)=2 from app.ph_monetary_snapshot where organization_id=pg_temp.org9(1)),'two immutable revisions in original ledger');
+select pg_temp.expect((select count(*)=1 and max(revision)=2 from app.ph_effective_monetary where organization_id=pg_temp.org9(1)),'effective revision only');
+select pg_temp.expect((app.ph_replay_cutoff_2026(pg_temp.org9(1),pg_temp.u(2),'2026-09-15')->>'net')::numeric=4557.55,'replacement retry idempotent');
+select pg_temp.expect((select sum(debit_total-credit_total)=0 from app.ph_payroll_journal where organization_id=pg_temp.org9(1)),'replacement and original journals balanced');
+select pg_temp.denied($$select app.ph_post_cutoff_2026(pg_temp.org9(1),pg_temp.u(2),'2026-09-15')$$,'P0001','ordinary retry cannot return superseded original');
+select pg_temp.expect((app.ph_export_reviewed_month(pg_temp.org9(4),'2026-02-01')->>'officialFiling')::boolean=false,'internal export is not official filing');
+select pg_temp.expect((app.ph_export_reviewed_month(pg_temp.org9(4),'2026-02-01')->>'csv') like '%2026-02,sss,4530.00,0.00,4530.00%','CSV contains reviewed SSS liability');
+select pg_temp.expect((app.ph_export_reviewed_month(pg_temp.org9(4),'2026-02-01')->>'sha256')=encode(sha256(convert_to(app.ph_export_reviewed_month(pg_temp.org9(4),'2026-02-01')->>'csv','UTF8')),'hex'),'export hash matches bytes');
+select set_config('request.jwt.claim.sub',pg_temp.u(3)::text,true);
+select pg_temp.denied($$select app.ph_export_reviewed_month(pg_temp.org9(4),'2026-02-01')$$,'42501','staff export denied');
+select pg_temp.expect(not has_function_privilege('authenticated','app.ph_replay_cutoff_2026(uuid,uuid,date)','EXECUTE'),'replay stays private');
+select pg_temp.expect(not has_table_privilege('authenticated','app.ph_effective_monetary','SELECT'),'effective ledger private');
 rollback;
+
