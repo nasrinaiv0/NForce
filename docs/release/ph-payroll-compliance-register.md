@@ -52,7 +52,10 @@ Status P = partial candidate/demo; U = unverified/not evidenced; C = candidate i
 |---|---|---|
 | HR-01–04, LAB-05 | PR #7 ph_employment_history / ph_employment_as_of | Authorized importer, validated actor and wage order, immutable payroll snapshot integration, lifecycle and correction acceptance |
 | LAB-01–04 | PR #8 ph_segment_workday | Authoritative attendance replay and approved calendar, all 32 monetary pay rates, company policy, legally reviewed workday boundaries, post-lock corrections |
-| BIR-12–14 | PR #9 planned private classification, RR 29-2025 benefit caps, RMC 50-2018 excess, RR 11-2018 MWE | verified wage order, evidence, historic opening balances, persistent idempotent benefit ledger, medical mode, CPA signoff |
-| BIR-15–16,18 | PR #9 planned limited rank-and-file classification | contributions allocation, reimbursement, retirement, separation, FBT and specialist exceptions |
-| BIR-07–11,19–20 | PR #9 planned annualization primitive per RR 11-2018 pp34–35 | verified 2316 imports, full year history, cumulative average method, refund settlement and substituted filing; 2026 year-end release not authorized |
+| BIR-12–14 | PR #10 candidate private classification, RR 29-2025 benefit caps, RMC 50-2018 excess, RR 11-2018 MWE | verified wage order, evidence, historic opening balances, persistent idempotent benefit ledger, medical mode, CPA signoff |
+| BIR-15–16,18 | PR #10 candidate limited rank-and-file classification | contributions allocation, reimbursement, retirement, separation, FBT and specialist exceptions |
+| BIR-07–11,19–20 | PR #10 candidate annualization primitive per RR 11-2018 pp34–35 | verified 2316 imports, full year history, cumulative average method, refund settlement and substituted filing; 2026 year-end release not authorized |
 All candidates private, no payroll API exposure. Independent review instructions in progress log; no remote migrations or merge. Exact-head CI must be checked individually.
+
+### Parallel branch integration blocker
+PR #9 (31b4e0c06273b919d4f7faa16f14f5b9a63f6893) appeared concurrently, stacked separately on #4. It adds accounting_employee_history, historical policy/calendar, adjustments and a concurrency harness. It overlaps #7/#8 and uses migration prefix 20261201000000 already used by #5. Do not combine or deploy either lineage as-is. Choose one canonical historical eligibility source, keep compensation revision/as-of semantics, reuse adjustment/concurrency coverage, eliminate duplicate histories, replace shift-start-only premium attribution and minimum OT blocks for covered PH work, assign unique migration versions before any hosted use. No rebase/merge of #9 authorized in this task. Re-review exact-head integrated tests and statutory acceptance.
