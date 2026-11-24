@@ -285,9 +285,9 @@ begin
  return calc;
 end $$;
 create function app.ph_post_period_2026(p_org uuid,p_user uuid,p_start date) returns jsonb
-language sql set search_path='' as $select app.ph_post_period_version_2026(p_org,p_user,p_start,false)$;
+language sql set search_path='' as $$select app.ph_post_period_version_2026(p_org,p_user,p_start,false)$$;
 create function app.ph_replay_period_2026(p_org uuid,p_user uuid,p_start date) returns jsonb
-language sql set search_path='' as $select app.ph_post_period_version_2026(p_org,p_user,p_start,true)$;
+language sql set search_path='' as $$select app.ph_post_period_version_2026(p_org,p_user,p_start,true)$$;
 -- Protect already posted benefit sets. No late entry is silently ignored.
 create function app.ph_guard_posted_benefit() returns trigger language plpgsql set search_path='' as $$
 begin
