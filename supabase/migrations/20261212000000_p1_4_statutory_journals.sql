@@ -2,7 +2,7 @@
 -- P1.4: immutable ancillary statutory journals, not a parallel payroll engine.
 -- Only independently reviewed evidence; no external payment or agency submission.
 alter table app.ph_payroll_attestation drop constraint ph_payroll_attestation_kind_check;
-alter table app.ph_payroll_attestation add check(kind in ('opening','month','divisor','week','annual','salary_month','settlement_journal','custody_policy','statutory_quote','cutoff_opening','period','wage','contribution','reversal','entitlement','replay','cutoff_final','weekly_replay','form1601c','statutory_accrual','sss_reimbursement'));
+alter table app.ph_payroll_attestation add check(kind in ('opening','month','divisor','week','annual','salary_month','settlement_journal','custody_policy','statutory_quote','cutoff_opening','period','wage','contribution','reversal','entitlement','replay','cutoff_final','weekly_replay','form1601c','statutory_accrual','sss_reimbursement','maternity_reconciliation'));
 create table app.ph_statutory_journal(
  organization_id uuid not null,user_id uuid not null,
  attestation_id uuid primary key references app.ph_payroll_attestation,
@@ -249,6 +249,10 @@ begin
  if (y->>'importId')::uuid is null or (y->>'retainUntil')::date is null or not isfinite((y->>'retainUntil')::date) or jsonb_typeof(y->'legalHold') is distinct from 'boolean' then raise exception 'invalid custody policy' using errcode='22023'; end if;
  when 'statutory_quote' then
  if y->>'category' is null or y->>'category' not in ('thirteenth','maternity','leave','special_women','separation','retirement') or jsonb_typeof(y->'eligible') is distinct from 'boolean' or (y->>'eligible')::boolean is distinct from true then raise exception 'reviewed eligibility required' using errcode='22023'; end if;
+ when 'maternity_reconciliation' then
+ if (y->>'advanceAttestationId')::uuid is null or y->>'leaveApprovalVerified' is distinct from 'true'
+ or y->>'noIntegratedAllowances' is distinct from 'true' or y->>'agencyBasesReviewed' is distinct from 'true'
+ or length(btrim(coalesce(y->>'leaveEvidenceReference','')))<8 then raise exception 'reviewed maternity reconciliation evidence required' using errcode='22023';end if;
  when 'statutory_accrual' then
  if coalesce(y->>'sourceDigest','') !~ '^[a-f0-9]{64}$' or (y->>'quoteId')::uuid is null or (y->>'quoteDate')::date is null or y->>'taxTreatmentVerified' is distinct from 'true' or y->>'noDuplicateCompensation' is distinct from 'true' then raise exception 'reviewed statutory source and tax treatment required' using errcode='22023';end if;
  case y->>'category'
@@ -462,3 +466,83 @@ begin
  then raise exception 'exact statutory final reconciliation required' using errcode='P0001';end if;
  return new;
 end $$;
+
+
+-- Reconcile the reviewed maternity advance against immutable locked workday
+-- evidence and existing monthly agency basis attestations. This is a private,
+-- read-only reconciliation, not a payment, remittance, new payroll engine or
+-- permission to skip a chronological ordinary payroll cutoff.
+create function app.ph_reconcile_maternity_coverage(p_org uuid,p_user uuid,p_day date) returns jsonb
+language plpgsql set search_path='' as $$
+declare a app.ph_payroll_attestation;j app.ph_statutory_journal;h app.ph_employment_history;first_h app.ph_employment_history;
+ ev app.ph_workday_evidence;z app.accounting_locked_snapshot;ca app.ph_payroll_attestation;
+ d date;wk date;mon date;agency text;c jsonb;monthly jsonb;months jsonb:='[]';
+ ee numeric:=0;er numeric:=0;full_pay numeric;days int;basis numeric;paid numeric;diff numeric;basic numeric;thirteenth jsonb;
+begin
+ perform app.accounting_tenant_lock(p_org);
+ if auth.uid() is null or auth.uid()=p_user or not app.has_permission(p_org,'payroll.prepare') or not app.has_permission(p_org,'timesheet.lock') then raise exception 'forbidden' using errcode='42501';end if;
+ a:=app.ph_approved_evidence(p_org,p_user,'maternity_reconciliation',p_day);
+ if a.maker=auth.uid() then raise exception 'independent maternity reconciliation required' using errcode='42501';end if;
+ select * into j from app.ph_statutory_journal where organization_id=p_org and user_id=p_user and attestation_id=(a.payload->>'advanceAttestationId')::uuid and category='maternity_advance';
+ if not found or p_day<>j.covered_to or app.ph_unresolved_reversal(p_org,p_user)
+ or exists(select 1 from app.ph_annual_settlement where organization_id=p_org and user_id=p_user and tax_year=2026)
+ then raise exception 'exact open maternity advance required' using errcode='P0001';end if;
+ days:=j.covered_to-j.covered_from+1;
+ first_h:=app.ph_employment_as_of(p_org,p_user,j.covered_from,clock_timestamp());
+ if first_h.status is distinct from 'employed' or first_h.pay_basis is distinct from 'monthly' then raise exception 'stable monthly salary candidate required' using errcode='P0001';end if;
+ full_pay:=round(first_h.rate_php*days/30,2);
+ if full_pay is distinct from (j.result->>'fullPay')::numeric then raise exception 'reviewed full pay differs from historical salary' using errcode='P0001';end if;
+ if exists(select 1 from app.ph_effective_monetary m where m.organization_id=p_org and m.user_id=p_user and m.period_start<=j.covered_to and m.pay_date>=j.covered_from)
+ then raise exception 'ordinary payroll overlaps maternity' using errcode='P0001';end if;
+ if exists(select 1 from app.accounting_adjustment_proposal x where x.organization_id=p_org and x.user_id=p_user and x.period_start<=j.covered_to and x.period_start+6>=j.covered_from) then raise exception 'attendance adjustment requires review' using errcode='P0001';end if;
+ -- Every maternity day must have the exact historical employment revision
+ -- and locked v4 attendance, with no work line in either day attribution.
+ for d in select g::date from generate_series(j.covered_from,j.covered_to,interval '1 day') g loop
+ wk:=d-(extract(isodow from d)::int-1);
+ h:=app.ph_employment_as_of(p_org,p_user,d,clock_timestamp());
+ select * into ev from app.ph_workday_evidence where organization_id=p_org and user_id=p_user and work_date=d and period_start=wk;
+ if not found or h.status is distinct from 'employed' or (h.effective_on,h.recorded_at) is distinct from (first_h.effective_on,first_h.recorded_at)
+ or (ev.employment_effective_on,ev.employment_recorded_at) is distinct from (h.effective_on,h.recorded_at)
+ then raise exception 'missing or changed maternity workday evidence' using errcode='P0001';end if;
+ select * into z from app.accounting_locked_snapshot where organization_id=p_org and user_id=p_user and period_start=wk;
+ if not found or z.reconciliation->>'classificationVersion' is distinct from '4' or coalesce((z.reconciliation->>'exactOvertimeReviewSeconds')::numeric,1)<>0
+ or jsonb_typeof(z.reconciliation->'payLines') is distinct from 'array'
+ or not exists(select 1 from public.payroll_periods where organization_id=p_org and period_start=wk)
+ or exists(select 1 from jsonb_array_elements(z.reconciliation->'payLines') x where (x->>'date')::date=d or (x->>'workday')::date=d)
+ then raise exception 'locked maternity day must contain no ordinary work' using errcode='P0001';end if;
+ end loop;
+ -- Reuse the existing agency candidate and monthly contribution attestation.
+ -- Reject any ordinary payroll or other maternity advance in those months:
+ -- shared-month allocation requires a more general contribution engine.
+ for mon in select g::date from generate_series(date_trunc('month',j.covered_from)::date,date_trunc('month',j.covered_to)::date,interval '1 month') g loop
+ if exists(select 1 from app.ph_effective_monetary m where m.organization_id=p_org and m.user_id=p_user and m.pay_date>=mon and m.pay_date<(mon+interval '1 month')::date)
+ or exists(select 1 from app.ph_statutory_journal x where x.organization_id=p_org and x.user_id=p_user and x.category='maternity_advance' and x.attestation_id<>j.attestation_id and x.covered_from<(mon+interval '1 month')::date and x.covered_to>=mon)
+ then raise exception 'shared month requires contribution allocation review' using errcode='P0001';end if;
+ ca:=app.ph_approved_evidence(p_org,p_user,'contribution',mon);
+ monthly:='{}'::jsonb;
+ foreach agency in array array['sss','philhealth','pagibig'] loop
+ basis:=(ca.payload->>agency)::numeric;
+ c:=app.ph_contribution_candidate(agency,basis,mon);
+ ee:=ee+(c->>'employee')::numeric;er:=er+(c->>'employer')::numeric;
+ monthly:=monthly||jsonb_build_object(agency,c);
+ end loop;
+ months:=months||jsonb_build_array(jsonb_build_object('month',mon,'contributionAttestation',ca.id,'agencies',monthly));
+ end loop;
+ diff:=(j.result->>'salaryDifferential')::numeric;
+ if ee is distinct from (j.result->>'employeeContributions')::numeric
+ or diff is distinct from greatest(0,full_pay-ee-(j.result->>'sssAdvance')::numeric)
+ then raise exception 'maternity deductions differ from reviewed agency totals' using errcode='P0001';end if;
+ -- Existing eligible basic is derived from canonical cutoff evidence. The
+ -- restricted candidate does not claim a complete year or a 13th-month payment.
+ if exists(select 1 from app.ph_effective_monetary m where m.organization_id=p_org and m.user_id=p_user and extract(year from m.pay_date)=2026 and (m.frequency='weekly' or m.evidence->>'basic' is null))
+ or exists(select 1 from app.ph_statutory_journal x where x.organization_id=p_org and x.user_id=p_user and x.category='maternity_advance' and x.attestation_id<>j.attestation_id)
+ then raise exception 'broader basic salary reconciliation required' using errcode='P0001';end if;
+ select coalesce(sum((m.evidence->>'basic')::numeric),0) into basic from app.ph_effective_monetary m where m.organization_id=p_org and m.user_id=p_user and extract(year from m.pay_date)=2026;
+ select coalesce(sum((x.result->>'gross')::numeric),0) into paid from app.ph_benefit_event x where x.organization_id=p_org and x.user_id=p_user and x.tax_year=2026 and x.request->>'code'='13th_month';
+ thirteenth:=app.ph_thirteenth_amount(basic,diff,0,paid,true,a.evidence);
+ return jsonb_build_object('coveredFrom',j.covered_from,'coveredTo',j.covered_to,'coveredDays',days,
+ 'lockedCoverageVerified',true,'fullPay',full_pay,'employeeContributions',ee,'employerContributions',er,'contributionMonths',months,
+ 'salaryDifferential',diff,'sssAdvance',(j.result->>'sssAdvance')::numeric,'ordinaryBasic',basic,'thirteenthCandidate',thirteenth,
+ 'contributionJournalPosted',false,'finalCloseEnabled',false,'paymentInitiated',false);
+end $$;
+revoke all on function app.ph_reconcile_maternity_coverage(uuid,uuid,date) from public,anon,authenticated,service_role;
