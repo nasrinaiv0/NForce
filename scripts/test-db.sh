@@ -58,4 +58,14 @@ test "$FAIL" -eq 0
 # Replay the identical event key without consuming the exemption again.
 "${PSQL[@]}" -v benefit_key=benefit-race-a -f "$ROOT/supabase/tests/ph_benefit_race.sql" >/dev/null
 "${PSQL[@]}" -f "$ROOT/supabase/tests/ph_benefit_race_verify.sql"
+# P0.4 independent tenant regression.
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p0_4_hold.sql" >"$WORK/p04-hold.log" 2>&1 & H=$!
+READY=0
+for i in $(seq 1 40); do
+  if grep -q P04_LOCK_HELD "$WORK/p04-hold.log"; then READY=1; break; fi
+  sleep 0.1
+done
+test "$READY" -eq 1
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p0_4_tenant_race.sql"
+wait "$H"
 echo "database tests passed"
