@@ -44,7 +44,7 @@ end $$;
 create function app.ph_post_statutory_journal(p_org uuid,p_user uuid,p_day date,p_kind text) returns jsonb
 language plpgsql set search_path='' as $$
 declare a app.ph_payroll_attestation;q app.ph_payroll_attestation;old app.ph_statutory_journal;adv app.ph_statutory_journal;h app.ph_employment_history;
- s app.ph_monetary_snapshot;y jsonb;j jsonb;lines jsonb;category text;from_day date;to_day date;amount numeric;differential numeric:=0;received numeric;dt numeric;ct numeric;
+ s app.ph_monetary_snapshot;y jsonb;j jsonb;lines jsonb;v_category text;from_day date;to_day date;amount numeric;differential numeric:=0;received numeric;dt numeric;ct numeric;
 begin
  perform app.accounting_tenant_lock(p_org);
  if auth.uid() is null or auth.uid()=p_user or not app.has_permission(p_org,'payroll.prepare') or not app.has_permission(p_org,'timesheet.lock') then raise exception 'forbidden' using errcode='42501';end if;
@@ -62,7 +62,7 @@ begin
  amount:=(y->>'amount')::numeric;
  select coalesce(sum((x.result->>'amount')::numeric),0) into received from app.ph_statutory_journal x where x.organization_id=p_org and x.quote_id=q.id and x.category='sss_reimbursement';
  if received+amount>(adv.result->>'sssAdvance')::numeric then raise exception 'reimbursement exceeds verified advance' using errcode='P0001';end if;
- category:='sss_reimbursement';from_day:=adv.covered_from;to_day:=adv.covered_to;
+ v_category:='sss_reimbursement';from_day:=adv.covered_from;to_day:=adv.covered_to;
  j:=jsonb_build_object('amount',amount,'cumulativeReimbursed',received+amount,'outstanding',(adv.result->>'sssAdvance')::numeric-received-amount);
  else
  if app.ph_unresolved_reversal(p_org,p_user) or exists(select 1 from app.ph_annual_settlement where organization_id=p_org and user_id=p_user and tax_year=2026) then raise exception 'unresolved or closed payroll' using errcode='P0001';end if;
@@ -71,17 +71,17 @@ begin
  if q.payload->>'category' is distinct from y->>'category' then raise exception 'quote category mismatch' using errcode='P0001';end if;
  case y->>'category'
  when 'maternity' then
- category:='maternity_advance';from_day:=(y->>'coveredFrom')::date;to_day:=(y->>'coveredTo')::date;
+ v_category:='maternity_advance';from_day:=(y->>'coveredFrom')::date;to_day:=(y->>'coveredTo')::date;
  amount:=(j->>'sssAdvance')::numeric;differential:=(j->>'salaryDifferential')::numeric;
  if to_day-from_day+1<>(j->>'paidDays')::int or from_day>p_day or to_day>date '2026-11-24'
  or amount+differential is distinct from (y->>'employeePaid')::numeric
  or (j->>'fullPay')::numeric-(j->>'employeeContributions')::numeric<amount
- or exists(select 1 from app.ph_monetary_snapshot s where s.organization_id=p_org and s.user_id=p_user and s.period_start<=to_day and s.pay_date>=from_day)
+ or exists(select 1 from app.ph_monetary_snapshot ms where ms.organization_id=p_org and ms.user_id=p_user and ms.period_start<=to_day and ms.pay_date>=from_day)
  or exists(select 1 from app.ph_statutory_journal x where x.organization_id=p_org and x.user_id=p_user and x.category='maternity_advance' and x.covered_from<=to_day and x.covered_to>=from_day)
  then raise exception 'maternity payment or overlapping coverage needs reconciliation' using errcode='P0001';end if;
  j:=j||jsonb_build_object('employeePaid',amount+differential,'incomeTaxExempt',amount+differential,'agencyContributionsExternalReview',true);
  when 'separation','retirement' then
- category:=y->>'category';from_day:=(y->>'exitDate')::date;to_day:=from_day;amount:=(j->>'minimum')::numeric;
+ v_category:=y->>'category';from_day:=(y->>'exitDate')::date;to_day:=from_day;amount:=(j->>'minimum')::numeric;
  select * into s from app.ph_effective_monetary where organization_id=p_org and user_id=p_user order by pay_date desc limit 1;
  if not found or s.pay_date+1<>from_day or p_day<from_day or (y->>'finalPeriod')::date is distinct from s.period_start or (y->>'finalRevision')::int is distinct from s.revision
  or not exists(select 1 from public.memberships where organization_id=p_org and user_id=p_user and status='ended') then raise exception 'latest effective final period and ended membership required' using errcode='P0001';end if;
@@ -93,12 +93,12 @@ begin
  end case;
  if exists(select 1 from app.ph_month_report r where r.organization_id=p_org and r.month_start<=date_trunc('month',greatest(to_day,p_day))::date and r.month_start>=date_trunc('month',least(from_day,p_day))::date) then raise exception 'closed report requires amended reconciliation' using errcode='P0001';end if;
  end if;
- lines:=app.ph_statutory_lines(category,amount,differential);
+ lines:=app.ph_statutory_lines(v_category,amount,differential);
  select sum((x->>'debit')::numeric),sum((x->>'credit')::numeric) into dt,ct from jsonb_array_elements(lines)x;
  if dt<>ct or dt<=0 then raise exception 'unbalanced statutory journal' using errcode='P0001';end if;
- j:=j||jsonb_build_object('category',category,'journalTotal',dt,'candidateOnly',true,'paymentInitiated',false);
+ j:=j||jsonb_build_object('category',v_category,'journalTotal',dt,'candidateOnly',true,'paymentInitiated',false);
  insert into app.ph_statutory_journal(organization_id,user_id,attestation_id,quote_id,category,event_on,covered_from,covered_to,source_digest,result,lines,debit_total,credit_total,recorded_by)
- values(p_org,p_user,a.id,q.id,category,p_day,from_day,to_day,y->>'sourceDigest',j,lines,dt,ct,auth.uid());
+ values(p_org,p_user,a.id,q.id,v_category,p_day,from_day,to_day,y->>'sourceDigest',j,lines,dt,ct,auth.uid());
  insert into public.audit_events(organization_id,actor_id,action,entity,entity_id,data)
  values(p_org,auth.uid(),'accounting.ph_statutory_journal','attestation',a.id::text,jsonb_build_object('category',category));
  return j;
@@ -160,7 +160,7 @@ begin
  into ee,er from app.ph_effective_monetary s where s.organization_id=p_org and s.pay_date>=p_month and s.pay_date<(p_month+interval '1 month')::date;
  due:=(r.totals->>p_agency)::numeric;
  if ee+er<>due then raise exception 'agency component mismatch' using errcode='P0001';end if;
- select coalesce(sum(x.amount),0) into paid from app.ph_remittance_receipt x join app.ph_remittance_journal j using(organization_id,agency,receipt_reference) where x.organization_id=p_org and x.month_start=p_month and x.agency=p_agency;
+ select coalesce(sum(rr.amount),0) into paid from app.ph_remittance_receipt rr join app.ph_remittance_journal j using(organization_id,agency,receipt_reference) where rr.organization_id=p_org and rr.month_start=p_month and rr.agency=p_agency;
  label:=case p_agency when 'sss' then 'My.SSS e-CL / PRN' when 'philhealth' then 'EPRS / SPA' else 'Membership Savings Remittance Form' end;
  return jsonb_build_object('agency',p_agency,'month',p_month,'destination',label,'employee',ee,'employer',er,'liability',due,'reviewedRemitted',paid,'outstanding',due-paid,'sourceSha256',x->>'sha256','officialUpload',false);
 end $$;
@@ -250,15 +250,7 @@ begin
  when 'statutory_quote' then
  if y->>'category' is null or y->>'category' not in ('thirteenth','maternity','leave','special_women','separation','retirement') or jsonb_typeof(y->'eligible') is distinct from 'boolean' or (y->>'eligible')::boolean is distinct from true then raise exception 'reviewed eligibility required' using errcode='22023'; end if;
  when 'statutory_accrual' then
- if coalesce(y->>'sourceDigest','') !~ '^[a-f0-9]{64}
- if y->>'reason' is null or y->>'reason' not in ('year_end','termination') or (y->>'available')::numeric is null
- or (y->>'available')::numeric<0 or (y->>'available')::numeric<>round((y->>'available')::numeric,2)
- then raise exception 'invalid annual evidence' using errcode='22023'; end if;
- end case;
- insert into app.ph_payroll_attestation_decision values(a.id,auth.uid(),p_evidence,clock_timestamp());
- insert into public.audit_events(organization_id,actor_id,action,entity,entity_id,data)
- values(p_org,auth.uid(),'accounting.ph_evidence_approved','attestation',a.id::text,jsonb_build_object('kind',a.kind));
-end $$; or (y->>'quoteId')::uuid is null or (y->>'quoteDate')::date is null or y->>'taxTreatmentVerified' is distinct from 'true' or y->>'noDuplicateCompensation' is distinct from 'true' then raise exception 'reviewed statutory source and tax treatment required' using errcode='22023';end if;
+ if coalesce(y->>'sourceDigest','') !~ '^[a-f0-9]{64}$' or (y->>'quoteId')::uuid is null or (y->>'quoteDate')::date is null or y->>'taxTreatmentVerified' is distinct from 'true' or y->>'noDuplicateCompensation' is distinct from 'true' then raise exception 'reviewed statutory source and tax treatment required' using errcode='22023';end if;
  case y->>'category'
  when 'maternity' then
  if y->>'actualPaymentVerified' is distinct from 'true' or y->>'nonExemptEmployer' is distinct from 'true' or y->>'contributionsReviewed' is distinct from 'true' or not app.ph_stat_money((y->>'employeePaid')::numeric)
@@ -269,15 +261,7 @@ end $$; or (y->>'quoteId')::uuid is null or (y->>'quoteDate')::date is null or y
  else raise exception 'unsupported statutory category' using errcode='22023';
  end case;
  when 'sss_reimbursement' then
- if coalesce(y->>'sourceDigest','') !~ '^[a-f0-9]{64}
- if y->>'reason' is null or y->>'reason' not in ('year_end','termination') or (y->>'available')::numeric is null
- or (y->>'available')::numeric<0 or (y->>'available')::numeric<>round((y->>'available')::numeric,2)
- then raise exception 'invalid annual evidence' using errcode='22023'; end if;
- end case;
- insert into app.ph_payroll_attestation_decision values(a.id,auth.uid(),p_evidence,clock_timestamp());
- insert into public.audit_events(organization_id,actor_id,action,entity,entity_id,data)
- values(p_org,auth.uid(),'accounting.ph_evidence_approved','attestation',a.id::text,jsonb_build_object('kind',a.kind));
-end $$; or (y->>'quoteId')::uuid is null or (y->>'quoteDate')::date is null or y->>'receiptVerified' is distinct from 'true' or not app.ph_stat_money((y->>'amount')::numeric) or (y->>'amount')::numeric<=0 then raise exception 'reviewed reimbursement receipt required' using errcode='22023';end if;
+ if coalesce(y->>'sourceDigest','') !~ '^[a-f0-9]{64}$' or (y->>'quoteId')::uuid is null or (y->>'quoteDate')::date is null or y->>'receiptVerified' is distinct from 'true' or not app.ph_stat_money((y->>'amount')::numeric) or (y->>'amount')::numeric<=0 then raise exception 'reviewed reimbursement receipt required' using errcode='22023';end if;
  when 'annual' then
  if y->>'reason' is null or y->>'reason' not in ('year_end','termination') or (y->>'available')::numeric is null
  or (y->>'available')::numeric<0 or (y->>'available')::numeric<>round((y->>'available')::numeric,2)
