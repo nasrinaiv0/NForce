@@ -106,3 +106,5 @@ See [statutory journals](p1-4-statutory-journals.md): restricted reviewed accrua
 P1.4 restricted final compensation now binds reviewed exempt exit accrual and effective final revision; maternity reconciliation summary distinct from actual coverage/annual close. Independent entitlement, tax, reporting and security signoff remains mandatory.
 
 P1.4 maternity: restricted private locked-day and agency-month reconciliation plus 13th calculation basis. No automatic maternity gap closure, contribution remittance, statutory filing or final payment.
+
+P1.4 reviewed maternity monthly residual integration is a restricted accounting candidate, not official contribution allocation or filing certification. General annual close and actual payment remain gated.
