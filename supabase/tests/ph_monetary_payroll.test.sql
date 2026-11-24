@@ -30,41 +30,14 @@ end $$;
 select pg_temp.denied($$select app.ph_month_amounts(30000,308.22,'2025-01-01',30000,30000,30000,0,0,1,false)$$,'P0001','wrong SSS basis rejected');
 select pg_temp.denied($$select app.ph_month_amounts(30000,0,'2026-01-01',30000,30000,30000,0,0,1,false)$$,'22023','unverified year rejected');
 -- A distinct fictional tenant with reviewed monthly history and sealed weekly source fixtures.
-create function pg_temp.mo() returns uuid language sql as $$ select 'fb100000-0000-0000-0000-000000000088'::uuid $$;
-insert into public.organizations(id,name,time_zone) values(pg_temp.mo(),'Fictional monthly payroll','Asia/Manila');
-insert into public.memberships(organization_id,user_id,status) select pg_temp.mo(),pg_temp.u(i),'active' from generate_series(1,4)i;
-insert into public.membership_roles(membership_id,role_id)
-select m.id,r.id from public.memberships m join public.roles r on r.organization_id is null and r.key=case when m.user_id=pg_temp.u(1) then 'owner' when m.user_id=pg_temp.u(4) then 'payroll' else 'staff' end where m.organization_id=pg_temp.mo();
-insert into app.ph_employment_history values(pg_temp.mo(),pg_temp.u(2),'2025-01-01','2025-01-01Z','employed','monthly',30000,'site','wage','fictional monthly-paid evidence',pg_temp.u(1));
-select app.ph_prepare_month(pg_temp.mo(),pg_temp.u(2),'2025-01-01','2025-01-01',365,600,30308.22,30000,30000,'fictional full-month no other earnings or unpaid absence');
-select pg_temp.denied($$select app.ph_review_month(pg_temp.mo(),pg_temp.u(2),'2025-01-01','self review')$$,'42501','month maker cannot approve');
-select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
-select app.ph_review_month(pg_temp.mo(),pg_temp.u(2),'2025-01-01','fictional CPA review');
-select pg_temp.denied($$select app.ph_post_month(pg_temp.mo(),pg_temp.u(2),'2025-01-01')$$,'P0001','missing locked evidence blocks posting');
--- Synthetic sealed-source rows for isolated monetary integration only.
--- Attendance reconciliation itself is exercised by the canonical PR12 fixtures.
-select set_config('request.jwt.claim.sub',pg_temp.u(1)::text,true);
-do $$ declare w date;d date;t uuid;j jsonb; begin
-for w in select '2024-12-30'::date+i*7 from generate_series(0,4)i loop
- insert into app.accounting_period_manifest values(pg_temp.mo(),w,'Asia/Manila','fictional monthly roster',pg_temp.u(1),false);
- for d in select w+i from generate_series(0,6)i where w+i between date '2025-01-01' and date '2025-01-31' loop
-  insert into app.accounting_roster_day values(pg_temp.mo(),w,pg_temp.u(2),d,480,0,'fictional policy');
-  perform app.ph_record_workday(pg_temp.mo(),w,pg_temp.u(2),d,(d+time '08:00') at time zone 'Asia/Manila',jsonb_build_object(d::text,'ordinary',(d+1)::text,'ordinary'),'fictional workday');
- end loop;
- update app.accounting_period_manifest set sealed=true where organization_id=pg_temp.mo() and period_start=w;
- insert into public.timesheets(organization_id,user_id,period_start,status) values(pg_temp.mo(),pg_temp.u(2),w,'locked') returning id into t;
- j:=jsonb_build_object('classificationVersion',4,'exactOvertimeReviewSeconds',0,'payLines',case when w=date '2025-01-06' then
- jsonb_build_array(jsonb_build_object('workday','2025-01-06','date','2025-01-06','seconds',7200,'multiplier',1.25,'code','REG_OT')) else '[]'::jsonb end);
- insert into app.accounting_submission values(pg_temp.mo(),w,pg_temp.u(2),j,t);
- insert into app.accounting_locked_snapshot values(pg_temp.mo(),w,pg_temp.u(2),j);
- insert into public.payroll_periods(organization_id,period_start,locked_by) values(pg_temp.mo(),w,pg_temp.u(1));
-end loop; end $$;
+\ir ph_month_fixture.sql
 select pg_temp.denied($$select app.ph_post_month(pg_temp.mo(),pg_temp.u(2),'2025-01-01')$$,'42501','month maker cannot post');
 select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
 select pg_temp.expect((app.ph_post_month(pg_temp.mo(),pg_temp.u(2),'2025-01-01')->>'net')::numeric=26783.19,'server-derived monthly net');
 select pg_temp.expect((app.ph_post_month(pg_temp.mo(),pg_temp.u(2),'2025-01-01')->>'net')::numeric=26783.19,'monetary posting retry stable');
 select pg_temp.expect((select count(*)=1 from app.ph_money_snapshot where organization_id=pg_temp.mo()),'one snapshot per employee month');
 select pg_temp.expect((select sum(debit)=34338.22 and sum(credit)=34338.22 from app.ph_money_journal where organization_id=pg_temp.mo()),'balanced agency-separated journal');
+select pg_temp.denied($$select app.accounting_propose_adjustment(pg_temp.mo(),'2025-01-06',pg_temp.u(2),'REG_OT',-1,'fictional reason for correction','fixture evidence','money-post-guard')$$,'42501','minute adjustment blocked after monetary post');
 select pg_temp.denied($$update app.ph_money_snapshot set net=0$$,'42501','money snapshot immutable');
 select pg_temp.denied($$delete from app.ph_money_journal$$,'42501','journal immutable');
 select set_config('request.jwt.claim.sub',pg_temp.u(3)::text,true);
