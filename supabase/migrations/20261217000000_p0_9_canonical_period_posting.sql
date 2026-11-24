@@ -23,12 +23,12 @@ alter table app.ph_money_snapshot add check(net=gross-employee_contrib-withholdi
  and coalesce(tax_deductible,employee_contrib) between 0 and employee_contrib);
 alter table app.ph_money_snapshot add check(
  (extract(year from pay_month)=2025 and frequency='monthly' and period_end is null and pay_date is null and attestation_id is null and exempt=0 and tax_deductible is null)
- or (pay_month between date '2026-01-06' and date '2026-11-24' and period_end is not null and pay_date=period_end
+ or (pay_month between date '2026-01-06' and date '2026-11-24' and period_end is not null and pay_date is not null and pay_date=period_end
  and period_end between pay_month and date '2026-11-24' and frequency in ('daily','weekly','semi-monthly','monthly') and attestation_id is not null and tax_deductible is not null));
 create function app.ph_money_attestation_guard() returns trigger language plpgsql set search_path='' as $$
 declare a app.ph_payroll_attestation;
 begin
- if new.legacy_pay_month is null and extract(year from new.pay_month)=2026 then
+ if extract(year from new.pay_month)=2026 then
  a:=app.ph_approved_evidence(new.organization_id,new.user_id,'period',new.pay_month);
  if a.id is distinct from new.attestation_id or (a.payload->>'end')::date is distinct from new.period_end
  or a.payload->>'frequency' is distinct from new.frequency then raise exception 'unmatched monetary attestation' using errcode='P0001';end if;
@@ -167,7 +167,7 @@ begin
  if worked=0 then
  if nonwork is null or jsonb_typeof(nonwork)<>'object' or length(btrim(coalesce(nonwork->>'reference','')))<8 then raise exception 'zero-work date requires disposition' using errcode='P0001';end if;
  if nonwork->>'kind' not in ('paid_leave','paid_regular_holiday','unpaid_nonwork','monthly_covered') or nonwork->>'kind' is null then raise exception 'unsupported nonwork disposition' using errcode='22023';end if;
- if nonwork->>'kind'='paid_regular_holiday' and ev.calendar_classes->>d::text not in ('regular_holiday','regular_holiday_rest') then raise exception 'holiday evidence mismatch' using errcode='P0001';end if;
+ if nonwork->>'kind'='paid_regular_holiday' and coalesce(ev.calendar_classes->>d::text,'') not in ('regular_holiday','regular_holiday_rest') then raise exception 'holiday evidence mismatch' using errcode='P0001';end if;
  if h.pay_basis='monthly' and nonwork->>'kind'<>'monthly_covered' then raise exception 'partial monthly salary requires separate review' using errcode='P0001';end if;
  if h.pay_basis<>'monthly' and nonwork->>'kind'='monthly_covered' then raise exception 'invalid monthly coverage' using errcode='P0001';end if;
  if nonwork->>'kind' in ('paid_leave','paid_regular_holiday') then
@@ -198,6 +198,8 @@ begin
  -- boundaries use payment date, not shift start. Partial/employer exemptions unsupported.
  mon:=date_trunc('month',e)::date;ca:=app.ph_approved_evidence(p_org,p_user,'contribution',mon);
  alloc:=(ca.payload->>'allocationDate')::date;
+ if e<alloc and date_trunc('month',app.ph_period_end(e+1,freq))::date<>mon
+ then raise exception 'final monthly cutoff cannot leave contributions unallocated' using errcode='P0001';end if;
  if e>alloc and not exists(select 1 from app.ph_money_snapshot m where m.organization_id=p_org and m.user_id=p_user and m.pay_date=alloc and m.calculation->>'contributionEvidence'=ca.id::text)
  then raise exception 'monthly contribution allocation missed' using errcode='P0001';end if;
  if e=alloc then
