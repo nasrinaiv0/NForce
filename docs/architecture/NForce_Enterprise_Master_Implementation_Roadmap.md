@@ -564,3 +564,40 @@ Cover all 23 departmental functions while preserving the existing architecture a
 > Retain this NForce enterprise roadmap as a reference only. Do not change the repository.
 
 **Audit summary:** NForce has a substantial workforce, attendance, HR and payroll foundation. The remaining work is to complete end-to-end departmental workflows, connect them through shared enterprise services, enforce strict information boundaries and independently verify production readiness. No repository modifications were made during this audit.
+
+
+## 13. Mandatory documentation before every GitHub commit and push
+
+**Status: Mandatory project policy, effective immediately (2026-11-24).**
+
+This rule applies to every contributor, maintainer, owner, employee, contractor, AI coding agent (including ChatGPT, Claude and Codex), bot and automated process that creates or pushes commits to any NForce GitHub branch. There are no exemptions for small fixes, formatting, refactors, dependency updates, documentation-only changes, emergency fixes, automation or staging branches.
+
+**No undocumented commit may be pushed.** Before creating each commit, prepare the corresponding append-only entry in `docs/PROGRESS_LOG.md` and stage it in the same commit as the changes. Update the affected implementation, architecture, feature, security, API, database, UI/UX, testing, legal or operational documentation whenever relevant. If no additional documentation is necessary, explain why in the progress entry; the progress entry itself is still mandatory. A commit message, PR description, chat transcript or verbal handover alone is not sufficient.
+
+### Required record for every commit
+
+- Date and time with timezone; contributor name or authorized agent identity; branch and PR/issue reference when available; parent commit SHA.
+- Roadmap phase, department, module and requirement identifiers affected; purpose, scope and expected behavior.
+- Exact files and systems changed, summary of additions, modifications and removals, and rationale for significant decisions.
+- Implementation status (Planned, In Progress, Implemented, Verified or Blocked), acceptance criteria and remaining work.
+- Tests actually run, commands, observed outcomes, failures, skipped checks and reasons; do not invent passing results.
+- Security, privacy, tenant isolation, permissions, accounting, statutory/legal, accessibility, performance and compatibility impact as applicable.
+- Dependency, database migration, configuration and infrastructure implications; rollback or recovery plan and any approval required.
+- Before/after screenshots, rendered previews, artifact references or other safe evidence for material UI changes; never include real employee data, credentials, secrets or confidential payroll information.
+- Independent reviewer findings when available, unresolved risks, next actions and responsible role.
+
+Record pre-commit evidence before the commit. Once GitHub assigns the SHA and CI/Vercel results become available, record exact-head verification in the next documented commit or in the PR's linked verification evidence; never claim future checks have passed. Keep progress entries append-only, correct errors with a new entry, and preserve historical records.
+
+### Required contributor workflow
+
+1. Read this master roadmap, the existing [development progress policy](../DEVELOPMENT_PROGRESS_POLICY.md), the applicable release plan and latest progress log before changing files.
+2. Inspect the current branch and PR head; preserve concurrent work and the canonical accounting/security boundaries.
+3. Document the intended change, requirements, risks and acceptance criteria before implementation.
+4. Implement and test in an authorized isolated environment; document actual results and limitations.
+5. Stage the progress entry and all relevant documentation with the implementation, review the complete diff, then commit and push.
+6. Verify the pushed SHA, PR status, CI, security checks, applicable Vercel preview and actual rendered artifacts. Report any failure or pending check accurately.
+7. Fix reproducible failures in a new documented commit; do not silently overwrite history, bypass checks, merge or activate production without the required authorization.
+
+### Review and enforcement
+
+A commit lacking its progress entry violates this policy, even if it compiles or passes tests. Reviewers must request correction before approval. A future automated gate should inspect every newly introduced commit, require a substantive progress-log addition, and require relevant documentation or an explicit applicability explanation. Configure required checks and protected-branch rules only with separate authorization; do not claim that a Markdown policy alone technically prevents pushes. Until enforcement is implemented, contributors and reviewers must apply the rule manually. This section takes precedence over any earlier wording that allows undocumented minor changes or requires documentation only once per PR. It does not authorize production changes, new infrastructure, merges, or remote migrations.
