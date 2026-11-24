@@ -285,3 +285,11 @@ Copy and complete for each meaningful change:
 - Initial P1.1 job 138180049656 failed on undeclared FOREACH variable in imported evidence validator. Declared numeric variable; before next commit add closed cutoff month coverage and monthly contribution reconciliation to existing report path. Test complete February late hire and reject partial month. No external filing.
 
 - Exact-head database job 138180608372 passed daily and both semi-monthly posting assertions before malformed test delimiter. Corrected dollar quoting. Restack new candidate on #20 browser fix b093df840e0d1e3b8cec5ab286807a89083505e2 with checked lease; preserve all P1.1 SQL and tests. No merge, hosted changes or paid resources.
+
+## 2026-11-24 — P1.2 revision candidate
+
+- Before commit: actual parent screenshot audit, separate PR21 test fix, canonical latest-cutoff revision replay, effective reports and internal CSV, mobile KPI layout. General entitlement and annual cutoff settlement remain gated. No hosted changes.
+
+- Initial #23 database job 138191355891 passed. Before commit: add explicit two-connection replay contention using disposable DB and verify one replacement/audit. No hosted changes.
+
+- Before final-settlement commit: extend only ordinary reviewed cutoff resignation with full effective YTD, 13th ledger and contribution allocation completeness; retain weekly route, no other entitlement or payment enabled. Refactor common fixture and add final annual journal/report regression.

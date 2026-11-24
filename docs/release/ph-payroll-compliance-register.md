@@ -93,3 +93,6 @@ See [P1.0](p1-0-consolidation.md) for imported statutory arithmetic, current sou
 
 ## P1.1
 See [P1.1 canonical cutoffs](p1-1-cutoffs.md) for statutory evidence, restricted cutoff posting and reversal scope. No actual filing, settlement, legal certification or production activation.
+
+## P1.2
+See [revision candidate](p1-2-revision-settlement.md). Restricted replay and internal exports; no official filing or production activation.
