@@ -43,4 +43,15 @@ test "$(grep -h -c 'P03_RACE_WIN' "$WORK"/race-*.log | awk '{n+=$1} END{print n}
 test "$(grep -h -c 'P03_RACE_ALREADY_LOCKED' "$WORK"/race-*.log | awk '{n+=$1} END{print n}')" -eq 1
 "${PSQL[@]}" -f "$ROOT/supabase/tests/p0_3_race_verify.sql"
 
+
+# P0.4 independent tenant regression.
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p0_4_hold.sql" >"$WORK/p04-hold.log" 2>&1 & H=$!
+READY=0
+for i in $(seq 1 40); do
+  if grep -q P04_LOCK_HELD "$WORK/p04-hold.log"; then READY=1; break; fi
+  sleep 0.1
+done
+test "$READY" -eq 1
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p0_4_tenant_race.sql"
+wait "$H"
 echo "database tests passed"
