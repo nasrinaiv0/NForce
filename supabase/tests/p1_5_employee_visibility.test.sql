@@ -69,4 +69,27 @@ select pg_temp.expect(public.payroll_self_history(pg_temp.org9(61),2026)->>'netC
 select pg_temp.expect(jsonb_array_length(public.payroll_self_disputes(pg_temp.org9(61),'2026-02-01'))=0,'replacement does not inherit original item dispute');
 select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
 select pg_temp.expect(jsonb_array_length(public.payroll_dispute_inbox(pg_temp.org9(61),'2026-02-01'))=1,'authorized payroll reviewer retains original dispute');
+-- Original case survives correction without mutating the monetary ledger.
+select set_config('request.jwt.claim.sub',pg_temp.u(2)::text,true);
+set local role authenticated;
+select pg_temp.denied($$select public.payroll_dispute_review(pg_temp.org9(61),'2026-02-01')$$,'42501','employee cannot open reviewer dashboard');
+select pg_temp.expect(jsonb_array_length(public.payroll_self_dispute_status(pg_temp.org9(61),'2026-02-01'))=1,'employee retains historical dispute receipt');
+select pg_temp.denied($$select public.payroll_dispute_propose(pg_temp.org9(61),'2026-02-01',pg_temp.u(2),1,0,'correction_required','fictional correction needed')$$,'42501','employee cannot propose resolution');
+reset role;
+select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
+set local role authenticated;
+select pg_temp.expect(public.payroll_dispute_review(pg_temp.org9(61),'2026-02-01')->'rows'->0->>'canPropose'='true','payroll maker may propose');
+select public.payroll_dispute_propose(pg_temp.org9(61),'2026-02-01',pg_temp.u(2),1,0,'correction_required','fictional correction needed');
+select pg_temp.denied($$select public.payroll_dispute_decide(pg_temp.org9(61),'2026-02-01',pg_temp.u(2),1,0,'approved','fictional independent check')$$,'42501','maker cannot approve own proposal');
+reset role;
+select set_config('request.jwt.claim.sub',pg_temp.u(1)::text,true);
+set local role authenticated;
+select pg_temp.expect(public.payroll_dispute_review(pg_temp.org9(61),'2026-02-01')->'rows'->0->>'canDecide'='true','independent owner may decide');
+select pg_temp.expect(public.payroll_dispute_decide(pg_temp.org9(61),'2026-02-01',pg_temp.u(2),1,0,'approved','fictional independent check')->>'status'='correction_required','independent decision records referral');
+select pg_temp.denied($$select public.payroll_dispute_decide(pg_temp.org9(61),'2026-02-01',pg_temp.u(2),1,0,'declined','different fictional check')$$,'23505','decision cannot be overwritten');
+select pg_temp.expect(not has_table_privilege('authenticated','app.ph_dispute_decision','INSERT'),'raw resolution write denied');
+reset role;
+select set_config('request.jwt.claim.sub',pg_temp.u(2)::text,true);
+select pg_temp.expect(public.payroll_self_dispute_status(pg_temp.org9(61),'2026-02-01')->0->>'status'='correction_required','employee sees approved resolution of original revision');
+select pg_temp.expect(public.payroll_self_snapshot(pg_temp.org9(61),'2026-02-01')->>'netCents'='2739245','dispute decision never changes payroll');
 rollback;
