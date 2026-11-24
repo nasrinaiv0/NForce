@@ -81,3 +81,6 @@ Parent #13 0e5c87fbd7d4192b6ff2e8b27b4d5d4ef03d06cd; PH source #12 1c17beb4c9f6a
 
 ## P0.7 traceability
 Private restricted 2025 weekly attendance-only monetary candidate, cumulative arithmetic, attested monthly bases and salary divisor, immutable monetary snapshot and accrual journal; encrypted envelope custody receipt and independent review. See [P0.7](p0-7-monetary.md) for sources, independent review and explicit gaps. Not certified, no live payroll or filing. 2026 PhilHealth schedule remains gated pending full verified rule evidence; previous-employer monetary integration, all paid nonwork/benefits, verified importer, actual encryption/key custody and annual settlement remain outstanding.
+
+## P0.8
+See [P0.8 statutory review](p0-8-statutory.md) for updated 2026 sources, maker-checker, taxable/exempt reconciliation, prior employer custody and annual candidate. Scope limited to ordinary reviewed weekly payroll through 2026-11-24. No certification, real settlement, public enablement or hosted migration.
