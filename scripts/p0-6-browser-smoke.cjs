@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 (async () => {
   const browser = await chromium.launch({headless:true});
   try {
-    for (const [name, width, height] of [['phone',390,844],['desktop',1440,900]]) {
+    for (const [name, width, height] of [['small-phone',320,760],['phone',390,844],['desktop',1440,900]]) {
       const page = await browser.newPage({ viewport:{width,height}, locale:'en-US', reducedMotion:'reduce' });
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
@@ -32,6 +32,33 @@ const assert = require('node:assert/strict');
       await page.getByText('Payroll',{exact:true}).first().click({timeout:30000});
       await page.getByText(/payable hours/i).first().waitFor({timeout:30000});
       await page.getByText(/export csv/i).first().waitFor({timeout:10000});
+      // The DOM contains the full value even when CSS ellipsizes it. Inspect
+      // rendered text fragments and computed clipping instead of textContent alone.
+      for (const label of ['Payable hours', 'Paid-hour equivalent', 'Unapproved OT']) {
+        const exact = page.getByText(label,{exact:true}).first();
+        const clipped = await exact.evaluate(el => {
+          const card = el.closest('[aria-label]');
+          if (!card) return ['missing accessible KPI container'];
+          const issues = [];
+          const walker = document.createTreeWalker(card, NodeFilter.SHOW_TEXT);
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            if (!n.textContent.trim()) continue;
+            const parent = n.parentElement;
+            const css = getComputedStyle(parent);
+            const clamp = css.getPropertyValue('-webkit-line-clamp');
+            if (css.textOverflow === 'ellipsis' || (clamp && clamp !== 'none' && Number(clamp) > 0)) issues.push('clamped: '+n.textContent);
+            const range = document.createRange();
+            range.selectNodeContents(n);
+            const bounds = card.getBoundingClientRect();
+            for (const rect of range.getClientRects()) {
+              if (rect.left < bounds.left-1 || rect.right > bounds.right+1 || rect.top < bounds.top-1 || rect.bottom > bounds.bottom+1) issues.push('outside KPI: '+n.textContent);
+            }
+          }
+          return issues;
+        });
+        assert.deepEqual(clipped, [], name+' '+label+' full text');
+      }
+      console.log(name+' payroll KPI full-text bounds passed');
       await page.screenshot({path:'/tmp/nforce-browser/screenshots/'+name+'-payroll.png',fullPage:true});
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2),'payroll viewport overflow');
       assert.equal(errors.length,0,errors.join('\n'));
