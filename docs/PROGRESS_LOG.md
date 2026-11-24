@@ -273,3 +273,5 @@ Copy and complete for each meaningful change:
 ## 2026-11-24 — P1.0 consolidation
 
 - Before commit: inspected #3–19 lineages and #15/#18 changes. Reuse statutory/cutoff arithmetic without duplicate monetary tables, preserve canonical weekly posting and private gates; add gated original monetary review UI and deterministic tests. Remaining multi-frequency posting, corrections and formal filing explicitly gated. No production changes.
+
+- Before preview commit: Python Decimal verified 93 cent allocations, maternity PHP23000, retirement PHP81000, redundancy PHP90000 and 13th-month PHP19000.84. Explicit fictional demo card uses the same component as live review; headless Chromium exercises the real payroll route and captures phone/desktop screenshots with no external traffic. Live authorization remains separately tested in SQL. No production changes.
