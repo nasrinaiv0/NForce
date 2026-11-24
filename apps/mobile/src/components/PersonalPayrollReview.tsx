@@ -81,7 +81,7 @@ export function PersonalPayrollReview() {
    <PayrollEvidence detail={detail} grossCents={data.grossCents} periodStart={backend==='demo'?'2026-02-01':liveData?.summary.periodStart} periodEnd={backend==='demo'?'2026-02-28':liveData?.summary.periodEnd} revision={backend==='demo'?1:liveData?.summary.revision} deductions={<Card style={{gap:t.space.md}}>
     <Text variant="headline" accessibilityRole="header">{v.deductions}</Text>
     <PayslipRow label={c.sss} value={formatPhpCents(data.sssEmployeeCents)}/>
-    {detail?.sssRegularCents!=null&&detail.sssMpfCents!=null&&<View style={{padding:t.space.md,backgroundColor:t.colors.fill,borderRadius:t.shape.control,gap:t.space.sm}}>
+    {detail?.sssRegularCents !== null && detail?.sssRegularCents !== undefined&&detail.sssMpfCents !== null && detail.sssMpfCents !== undefined&&<View style={{padding:t.space.md,backgroundColor:t.colors.fill,borderRadius:t.shape.control,gap:t.space.sm}}>
      <PayslipRow label={v.sssRegular} value={formatPhpCents(detail.sssRegularCents)}/>
      <PayslipRow label={v.sssMpf} value={formatPhpCents(detail.sssMpfCents)}/>
     </View>}
@@ -128,8 +128,8 @@ function PayrollEvidence({detail,grossCents,periodStart,periodEnd,revision,deduc
  const [limit,setLimit]=useState(12);
  if(!detail)return null;
  const row=(label:string,value:string)=><PayslipRow key={label} label={label} value={value}/>;
- const money=(x:string|null|undefined)=>x==null?c.unknown:formatPhpCents(x);
- const remaining=detail.basicCents!=null&&detail.premiumCents!=null?BigInt(grossCents)-BigInt(detail.basicCents)-BigInt(detail.premiumCents):null;
+ const money=(x:string|null|undefined)=>(x === null || x === undefined)?c.unknown:formatPhpCents(x);
+ const remaining=detail.basicCents !== null && detail.basicCents !== undefined&&detail.premiumCents !== null && detail.premiumCents !== undefined?BigInt(grossCents)-BigInt(detail.basicCents)-BigInt(detail.premiumCents):null;
  const instant=(x:string|null|undefined)=>x==null?c.unknown:formatPayslipInstant(x,i18n.locale)??c.unknown;
  const description=(code:string)=>{
   const root=code.replace(/_ND$/,'').replace(/_OT$/,'');
@@ -171,8 +171,8 @@ function PayrollEvidence({detail,grossCents,periodStart,periodEnd,revision,deduc
       <View style={{gap:t.space.xs}}>
        <Text variant="caption" color="textSecondary">{c.what} · {item.code}</Text>
        <Text variant="headline" weight="700">{description(item.code)}</Text>
-       <Text variant="title2" tabular color="primary">{amount==null?c.unknown:formatPayslipDecimal(amount)}</Text>
-       <Text variant="caption" color="textSecondary">{amount==null?c.unknown:item.recordedAmount!=null?v.recorded:v.calculated}{amount!=null?' · '+v.exact:''}</Text>
+       <Text variant="title2" tabular color="primary">{(amount === null || amount === undefined)?c.unknown:formatPayslipDecimal(amount)}</Text>
+       <Text variant="caption" color="textSecondary">{(amount === null || amount === undefined)?c.unknown:item.recordedAmount !== null?v.recorded:v.calculated}{(amount !== null && amount !== undefined)?' · '+v.exact:''}</Text>
       </View>
       {row(c.when,item.date??c.unknown)}
       {row(c.where,item.siteReference??c.unknown)}
@@ -185,7 +185,7 @@ function PayrollEvidence({detail,grossCents,periodStart,periodEnd,revision,deduc
        {item.method==='monthly_increment'&&amount!==null&&amount!==undefined&&Number(amount)===0&&<Text variant="footnote" color="textSecondary">{v.included}</Text>}
        {item.hourlyRate!==null&&row(v.rate,formatPayslipDecimal(item.hourlyRate)+' / h')}
        {item.multiplier!==null&&row(v.factor,item.multiplier+'×')}
-       {amount!=null&&row(v.exact,amount+' PHP')}
+       {(amount !== null && amount !== undefined)&&row(v.exact,amount+' PHP')}
       </View>
      </View>;
     })}
