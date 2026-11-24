@@ -119,7 +119,7 @@ const assert = require('node:assert/strict');
       await page.getByText('Fictional office',{exact:true}).first().waitFor({timeout:10000});
       assert.equal(await page.getByText(/employer contribution|employer cost/i).count(),0,role+' own payslip');
       await page.getByText('Regular work · Overtime',{exact:true}).waitFor({timeout:10000});
-      await page.getByText('₱1,150.68',{exact:true}).last().waitFor({timeout:10000});
+      await page.getByText('₱287.67',{exact:true}).last().waitFor({timeout:10000});
       await page.getByText('Regular work · Overtime',{exact:true}).scrollIntoViewIfNeeded();
       await page.screenshot({path:'/tmp/nforce-browser/screenshots/role-'+role+'-payslip.png',fullPage:true});
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2),role+' payslip viewport overflow');

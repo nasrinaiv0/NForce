@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useSession } from '@/data/queries';
 import { TextInput, View } from 'react-native';
 import { Button } from '@/components/Button';
@@ -66,6 +66,7 @@ export function PersonalPayrollReview() {
     <View style={{gap:t.space.xs}}>
      <Text variant="label" color="onPrimaryContainer">{c.net}</Text>
      <Text variant="largeTitle" weight="700" color="onPrimaryContainer" tabular style={{flexShrink:1}}>{formatPhpCents(data.netCents)}</Text>
+     <Text variant="footnote" color="onPrimaryContainer">{backend==='demo'?'2026-02-01 – 2026-02-28':liveData?.summary.periodStart+' – '+liveData?.summary.periodEnd}</Text>
      <Text variant="footnote" color="onPrimaryContainer">{labels[i18n.locale].payment}</Text>
     </View>
     <View style={{flexDirection:'row',height:8,borderRadius:8,overflow:'hidden',backgroundColor:t.colors.fill}}>
@@ -77,7 +78,7 @@ export function PersonalPayrollReview() {
      <View style={{flexGrow:1,gap:t.space.xs}}><Text variant="footnote" color="onPrimaryContainer">{v.totalDeductions}</Text><Text variant="headline" color="onPrimaryContainer" tabular>{formatPhpCents((BigInt(data.employeeContributionCents)+BigInt(data.withholdingCents)).toString())}</Text></View>
     </View>
    </Card>
-   <Card style={{gap:t.space.md}}>
+   <PayrollEvidence detail={detail} grossCents={data.grossCents} periodStart={backend==='demo'?'2026-02-01':liveData?.summary.periodStart} periodEnd={backend==='demo'?'2026-02-28':liveData?.summary.periodEnd} revision={backend==='demo'?1:liveData?.summary.revision} deductions={<Card style={{gap:t.space.md}}>
     <Text variant="headline" accessibilityRole="header">{v.deductions}</Text>
     <PayslipRow label={c.sss} value={formatPhpCents(data.sssEmployeeCents)}/>
     {detail?.sssRegularCents!=null&&detail.sssMpfCents!=null&&<View style={{padding:t.space.md,backgroundColor:t.colors.fill,borderRadius:t.shape.control,gap:t.space.sm}}>
@@ -89,19 +90,18 @@ export function PersonalPayrollReview() {
     <PayslipRow label={c.ee} value={formatPhpCents(data.employeeContributionCents)}/>
     <PayslipRow label={c.tax} value={formatPhpCents(data.withholdingCents)}/>
     <View style={{borderTopWidth:t.shape.hairline,borderTopColor:t.colors.separator,paddingTop:t.space.md}}><PayslipRow label={v.totalDeductions} value={formatPhpCents((BigInt(data.employeeContributionCents)+BigInt(data.withholdingCents)).toString())}/></View>
-   </Card>
-   <PayrollEvidence detail={detail} grossCents={data.grossCents} periodStart={backend==='demo'?'2026-02-01':liveData?.summary.periodStart} periodEnd={backend==='demo'?'2026-02-28':liveData?.summary.periodEnd} revision={backend==='demo'?1:liveData?.summary.revision}/>
+   </Card>}/>
   </>}
  </View>;
 }
 
 
 const fictionalDetail: Pick<PersonalPayrollDetail,'frequency'|'exemptCents'|'taxableCents'|'taxDeductibleCents'|'basicCents'|'premiumCents'|'items'|'paymentConfirmed'|'releasedAt'|'sssRegularCents'|'sssMpfCents'> = {
- frequency:'monthly',exemptCents:'0',taxableCents:'2755000',taxDeductibleCents:'245000',basicCents:'2800000',premiumCents:'115068',paymentConfirmed:false,releasedAt:null,sssRegularCents:'100000',sssMpfCents:'50000',
+ frequency:'monthly',exemptCents:'0',taxableCents:'2755000',taxDeductibleCents:'245000',basicCents:'2800000',premiumCents:'28767',paymentConfirmed:false,releasedAt:null,sssRegularCents:'100000',sssMpfCents:'50000',
  items:[
   {date:'2026-02-02',code:'REG',start:'2026-02-02T01:00:00Z',end:'2026-02-02T09:00:00Z',seconds:'28800',hourlyRate:'115.0684931506849315',multiplier:'1',recordedAmount:null,calculatedAmount:'0',siteReference:'Fictional office',method:'monthly_increment'},
-  {date:'2026-02-02',code:'REG_OT',start:'2026-02-02T09:00:00Z',end:'2026-02-02T17:00:00Z',seconds:'28800',hourlyRate:'115.0684931506849315',multiplier:'1.25',recordedAmount:null,calculatedAmount:'1150.684931506849315',siteReference:'Fictional office',method:'hourly_factor'},
-  {date:null,code:'taxable_allowance',start:null,end:null,seconds:null,hourlyRate:null,multiplier:null,recordedAmount:'849.32',siteReference:null,method:'recorded_amount'}
+  {date:'2026-02-02',code:'REG_OT',start:'2026-02-02T09:00:00Z',end:'2026-02-02T11:00:00Z',seconds:'7200',hourlyRate:'115.0684931506849315',multiplier:'1.25',recordedAmount:null,calculatedAmount:'287.67123287671232875',siteReference:'Fictional office',method:'hourly_factor'},
+  {date:null,code:'taxable_allowance',start:null,end:null,seconds:null,hourlyRate:null,multiplier:null,recordedAmount:'1712.33',siteReference:null,method:'recorded_amount'}
  ],
 };
 const labels = {
@@ -122,7 +122,7 @@ function PayslipRow({label,value}:{label:string;value:string}) {
   <Text variant="subhead" weight="600" tabular style={{flexShrink:1,maxWidth:'100%'}}>{value}</Text>
  </View>;
 }
-function PayrollEvidence({detail,grossCents,periodStart,periodEnd,revision}:{detail:typeof fictionalDetail|undefined;grossCents:string;periodStart:string|undefined;periodEnd:string|undefined;revision:number|undefined}) {
+function PayrollEvidence({detail,grossCents,periodStart,periodEnd,revision,deductions}:{detail:typeof fictionalDetail|undefined;grossCents:string;periodStart:string|undefined;periodEnd:string|undefined;revision:number|undefined;deductions:ReactNode}) {
  const t=useTheme(),i18n=useI18n(),c=labels[i18n.locale],v=modern[i18n.locale];
  const [open,setOpen]=useState(false);
  const [limit,setLimit]=useState(12);
@@ -159,6 +159,7 @@ function PayrollEvidence({detail,grossCents,periodStart,periodEnd,revision}:{det
    </View>
    <Text variant="footnote" color="textSecondary">{c.total}</Text>
   </Card>
+  {deductions}
   <Card style={{gap:t.space.md}}>
    <Button title={open?c.hide:c.show} variant="tonal" onPress={()=>setOpen(x=>!x)}/>
    {open&&<>

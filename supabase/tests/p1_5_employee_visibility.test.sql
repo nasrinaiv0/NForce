@@ -23,7 +23,7 @@ select pg_temp.expect((select jsonb_array_length(x->'items')=28 and exists(selec
 select pg_temp.expect((select not exists(select 1 from jsonb_array_elements(x->'items') i where exists(select 1 from jsonb_object_keys(i) k where k not in ('date','code','start','end','seconds','hourlyRate','multiplier','recordedAmount','calculatedAmount','siteReference','method'))) from personal_detail),'nested payslip item allowlist excludes private evidence');
 select pg_temp.expect((select x->>'sssRegularCents'='100000' and x->>'sssMpfCents'='50000' and x->>'releasedAt' is not null from personal_detail),'employee SSS split and release time reconcile');
 select pg_temp.expect((select exists(select 1 from jsonb_array_elements(x->'items') i where i->>'code'='REG' and (i->>'calculatedAmount')::numeric=0 and i->>'recordedAmount' is null) from personal_detail),'monthly regular work is not double counted as separate salary');
-select pg_temp.denied($select public.payroll_self_detail(pg_temp.org9(62),'2026-02-01')$$,'42501','detail cannot bypass workspace release gate');
+select pg_temp.denied($$select public.payroll_self_detail(pg_temp.org9(62),'2026-02-01')$$,'42501','detail cannot bypass workspace release gate');
 select pg_temp.denied($$select public.payroll_management_snapshot(pg_temp.org9(61),'2026-02-02')$$,'42501','employee organization monetary review denied');
 select pg_temp.denied($$select public.accounting_review_snapshot(pg_temp.org9(61),'2026-02-02','organization')$$,'42501','employee organization attendance denied');
 select pg_temp.denied($$select public.payroll_self_snapshot(pg_temp.org9(62),'2026-02-01')$$,'42501','other workspace without release gate denied');
