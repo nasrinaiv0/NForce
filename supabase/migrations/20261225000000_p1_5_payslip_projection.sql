@@ -30,26 +30,16 @@ begin
    when code='guaranteed_salary' then 'salary_allocation' when code='benefit' then 'recorded_benefit' when amt is not null then 'recorded_amount' else 'period_total_only' end;
   -- Explanation only: never replace a stored monetary amount or period total.
   calculated:=null;
-  if amt is null and code ~ '^(REG|RD|SH|SH_RD|RH|RH_RD|DH|DH_RD)(_OT)?(_ND)?jsonb_build_array(jsonb_build_object('date',d,'code',code,'start',case when l?'start' then (l->>'start')::timestamptz else null end,'end',case when l?'end' then (l->>'end')::timestamptz else null end,
+  if amt is null and code ~ '^(REG|RD|SH|SH_RD|RH|RH_RD|DH|DH_RD)(_OT)?(_ND)?$' and basis in ('monthly','hourly','daily') and rate is not null and factor is not null and duration is not null then
+   calculated:=app.ph_exact_line_amount(rate,duration,case when method='monthly_increment' then factor-1 else factor end);
+  end if;
+  items:=items||jsonb_build_array(jsonb_build_object('date',d,'code',code,'start',case when l?'start' then (l->>'start')::timestamptz else null end,'end',case when l?'end' then (l->>'end')::timestamptz else null end,
    'seconds',duration::text,'hourlyRate',rate::text,'multiplier',factor::text,'recordedAmount',amt::text,'calculatedAmount',calculated::text,'siteReference',left(site,160),'method',method));
  end loop;
  return jsonb_build_object('summary',base,'frequency',s.frequency,'exemptCents',(s.exempt*100)::numeric(30,0)::text,'taxableCents',(s.taxable*100)::numeric(30,0)::text,
  'taxDeductibleCents',(s.tax_deductible*100)::numeric(30,0)::text,'basicCents',case when s.evidence?'basic' then ((s.evidence->>'basic')::numeric*100)::numeric(30,0)::text else null end,
  'premiumCents',case when s.evidence?'premium' then ((s.evidence->>'premium')::numeric*100)::numeric(30,0)::text else null end,
  'items',items,'paymentConfirmed',false,'releasedAt',released,'sssRegularCents',case when reg is not null then (reg*100)::numeric(30,0)::text else null end,'sssMpfCents',case when mpf is not null then (mpf*100)::numeric(30,0)::text else null end);
-end $$;
-revoke all on function public.payroll_self_detail(uuid,date) from public,anon,authenticated,service_role;
-grant execute on function public.payroll_self_detail(uuid,date) to authenticated;
- and basis in ('monthly','hourly','daily') and rate is not null and factor is not null and duration is not null then
-   calculated:=app.ph_exact_line_amount(rate,duration,case when method='monthly_increment' then factor-1 else factor end);
-  end if;
-  items:=items||jsonb_build_array(jsonb_build_object('date',d,'code',code,'start',case when l?'start' then (l->>'start')::timestamptz else null end,'end',case when l?'end' then (l->>'end')::timestamptz else null end,
-   'seconds',duration::text,'hourlyRate',rate::text,'multiplier',factor::text,'recordedAmount',amt::text,'siteReference',left(site,160),'method',method));
- end loop;
- return jsonb_build_object('summary',base,'frequency',s.frequency,'exemptCents',(s.exempt*100)::numeric(30,0)::text,'taxableCents',(s.taxable*100)::numeric(30,0)::text,
- 'taxDeductibleCents',(s.tax_deductible*100)::numeric(30,0)::text,'basicCents',case when s.evidence?'basic' then ((s.evidence->>'basic')::numeric*100)::numeric(30,0)::text else null end,
- 'premiumCents',case when s.evidence?'premium' then ((s.evidence->>'premium')::numeric*100)::numeric(30,0)::text else null end,
- 'items',items,'paymentConfirmed',false);
 end $$;
 revoke all on function public.payroll_self_detail(uuid,date) from public,anon,authenticated,service_role;
 grant execute on function public.payroll_self_detail(uuid,date) to authenticated;
