@@ -244,3 +244,6 @@ Copy and complete for each meaningful change:
 - PR #11 exact-head CI/Vercel green. Documented review RPC, short-lived tenant gate, bounded dual-control ingestion and authorization locks before commit. Native package metadata verification and UI work follow. No remote SQL, resources or production changes.
 
 - Before second commit: registry metadata verified for SDK 58 SecureStore 58.0.3 via isolated CI job 138162105020. Added pinned integrity lock entry, native OS-vault adapter and tests, server-only read review UI and auth-generation guard, independent ingestion and role-race regression. Browser remains memory-only; public writes remain disabled. Native real-device and rendered browser acceptance outstanding.
+
+## 2026-11-24 P0.6 consolidation plan
+- Verified PR #13 and #12 exact-head CI. Canonical PH history and exact-second classifications replace duplicate P0.3 schema; enterprise lifecycle and review to be reconciled. Preserve private gates, test both lineages; no remote SQL, merges, paid resources or production changes.

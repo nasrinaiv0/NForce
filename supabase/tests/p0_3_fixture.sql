@@ -16,17 +16,17 @@ select m.id,r.id from public.memberships m join public.roles r on r.organization
 and r.key=case when m.user_id=pg_temp.u(1) then 'owner' when m.user_id=pg_temp.u(4) then 'payroll' else 'staff' end
 where m.organization_id=pg_temp.org();
 select set_config('request.jwt.claim.sub',pg_temp.u(1)::text,false);
--- Explicit historical coverage; owner and payroll are non-eligible in this fixture.
-select app.accounting_record_employee(pg_temp.org(),pg_temp.u(i),'2025-01-01',i=2,'22:00','08:00',array[6,7]::smallint[],'fixture employment record')
+-- Canonical employment history; no second eligibility table. Attested fictional roster.
+insert into app.ph_employment_history(organization_id,user_id,effective_on,recorded_at,status,pay_basis,rate_php,site_reference,wage_order_reference,evidence_reference,recorded_by)
+select pg_temp.org(),pg_temp.u(i),'2025-01-01','2025-01-01Z',case when i=2 then 'employed' else 'separated' end,
+case when i=2 then 'daily' end,case when i=2 then 600 end,case when i=2 then 'site' end,case when i=2 then 'wage' end,'fixture history',pg_temp.u(1)
 from generate_series(1,4)i;
-select app.accounting_record_employee(pg_temp.org(),pg_temp.u(2),'2025-01-07',false,'22:00','08:00',array[6,7]::smallint[],'fixture termination');
-select app.accounting_record_policy(pg_temp.org(),'2025-01-01','Asia/Manila',480,0,1320,360,1.1,
-'{"REG":1,"RD":1.3,"SH":1.3,"SH_RD":1.5,"RH":2,"RH_RD":2.6}',
-'{"REG":1.25,"RD":1.3,"SH":1.3,"SH_RD":1.3,"RH":1.3,"RH_RD":1.3}','fictional rates, not legal advice');
-select app.accounting_record_calendar(pg_temp.org(),'2025-01-06'::date+i,case when i=0 then 'regular' else 'ordinary' end,'fixture holiday calendar')
-from generate_series(0,6)i;
-select app.accounting_materialize_week(pg_temp.org(),'2025-01-06','attested fictional complete roster');
-select pg_temp.expect((select count(*)=1 from app.accounting_roster_day where organization_id=pg_temp.org()),'effective-dated eligibility retains historical day and excludes future dates');
+insert into app.ph_employment_history values(pg_temp.org(),pg_temp.u(2),'2025-01-07','2025-01-07Z','separated',null,null,null,null,'fixture separation',pg_temp.u(1));
+insert into app.accounting_period_manifest values(pg_temp.org(),'2025-01-06','Asia/Manila','attested fictional roster',pg_temp.u(1),false);
+insert into app.accounting_roster_day values(pg_temp.org(),'2025-01-06',pg_temp.u(2),'2025-01-06',480,0,'fixture policy');
+select app.ph_record_workday(pg_temp.org(),'2025-01-06',pg_temp.u(2),'2025-01-06','2025-01-06 22:00+08','{"2025-01-06":"regular_holiday","2025-01-07":"ordinary"}','fixture attested calendar and workday');
+update app.accounting_period_manifest set sealed=true where organization_id=pg_temp.org();
+select pg_temp.expect((select count(*)=1 from app.ph_workday_evidence where organization_id=pg_temp.org()),'canonical historical workday attested');
 insert into public.attendance_events(organization_id,user_id,type,occurred_at,source,idempotency_key) values
 (pg_temp.org(),pg_temp.u(2),'clock_in','2025-01-06 14:00Z','mobile','p03-clock-in'),
 (pg_temp.org(),pg_temp.u(2),'break_start','2025-01-06 18:00Z','mobile','p03-break-in'),
