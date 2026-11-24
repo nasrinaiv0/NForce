@@ -34,8 +34,10 @@ export function activeWorkspace(state: BackendState = backendStore.get()): Works
 }
 
 let started = false;
+let sessionGeneration = 0;
 
 async function applySession(session: Session | null): Promise<void> {
+  sessionGeneration++;
   if (session === null) {
     backendStore.set({ auth: 'signed_out', userId: undefined, email: undefined, workspaces: undefined, error: undefined });
     return;
@@ -45,11 +47,15 @@ async function applySession(session: Session | null): Promise<void> {
 }
 
 export async function reloadWorkspaces(): Promise<void> {
+  const generation = sessionGeneration;
+  const user = backendStore.get().userId;
+  if (user === undefined) return;
+  const stillCurrent = () => generation === sessionGeneration && backendStore.get().userId === user;
   try {
     const workspaces = await fetchWorkspaces(supabase());
-    backendStore.set({ workspaces, error: undefined });
+    if (stillCurrent()) backendStore.set({ workspaces, error: undefined });
   } catch (error) {
-    backendStore.set({ workspaces: [], error: error instanceof Error ? error.message : String(error) });
+    if (stillCurrent()) backendStore.set({ workspaces: [], error: error instanceof Error ? error.message : String(error) });
   }
 }
 
@@ -58,7 +64,13 @@ export function startBackend(): void {
   if (started || !liveConfigured) return;
   started = true;
   const auth = supabase().auth;
-  void auth.getSession().then(({ data }) => applySession(data.session));
+  const initialGeneration = sessionGeneration;
+  void auth.getSession().then(({ data, error }) => {
+    if (initialGeneration !== sessionGeneration) return;
+    return applySession(error === null ? data.session : null);
+  }).catch(() => {
+    if (initialGeneration === sessionGeneration) void applySession(null);
+  });
   auth.onAuthStateChange((event, session) => {
     // Token refreshes keep the same user and workspaces.
     if (event === 'TOKEN_REFRESHED' && session?.user.id === backendStore.get().userId) return;
@@ -95,7 +107,8 @@ export async function sendPasswordReset(email: string, redirectTo?: string): Pro
 }
 
 export async function signOut(): Promise<void> {
-  await supabase().auth.signOut();
+  const { error } = await supabase().auth.signOut();
+  fail(error);
 }
 
 export async function createWorkspace(name: string, timeZone: string, jobTitle: string): Promise<void> {

@@ -238,3 +238,9 @@ Copy and complete for each meaningful change:
 - Parent PR #9 exact-head CI and Vercel green. Documented immutable lifecycle capture, private ingestion, tenant lock protocol and locked correction guard before commit. See P0.4 acceptance notes. No remote SQL or production changes.
 
 - Documented second candidate commit: two-person departed reconciliation, immutable decisions, same-tenant contention regression, localized live accounting gate. Exact-head CI pending; no remote writes.
+
+## 2026-11-24 — P0.5 private review candidate
+
+- PR #11 exact-head CI/Vercel green. Documented review RPC, short-lived tenant gate, bounded dual-control ingestion and authorization locks before commit. Native package metadata verification and UI work follow. No remote SQL, resources or production changes.
+
+- Before second commit: registry metadata verified for SDK 58 SecureStore 58.0.3 via isolated CI job 138162105020. Added pinned integrity lock entry, native OS-vault adapter and tests, server-only read review UI and auth-generation guard, independent ingestion and role-race regression. Browser remains memory-only; public writes remain disabled. Native real-device and rendered browser acceptance outstanding.
