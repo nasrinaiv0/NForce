@@ -123,4 +123,25 @@ perform pg_temp.expect(not has_function_privilege(r,'app.ph_post_period_2026(uui
 perform pg_temp.expect(not has_function_privilege(r,'app.ph_replay_period_2026(uuid,uuid,date)','EXECUTE'),'replay private');
 perform pg_temp.expect(not has_function_privilege(r,'app.ph_record_annual_settlement_2026(uuid,uuid,date)','EXECUTE'),'final settlement private');
 end loop;end $$;
+-- Reuse approved statutory calculations, not a second engine.
+select pg_temp.attest(pg_temp.org9(4),'statutory_quote','2026-02-28','{"category":"thirteenth","eligible":true,"basic":30000,"maternity":0,"integratedBasic":0,"paid":2500}');
+select pg_temp.expect((app.ph_reviewed_statutory_quote(pg_temp.org9(4),pg_temp.u(2),'2026-02-28')->'result'->>'remaining')::numeric=0,'reviewed statutory quote uses canonical benefit calculator');
+do $$ declare q jsonb;begin
+ q:=app.ph_month_liability_review(pg_temp.org9(4),'2026-02-01');
+ perform pg_temp.expect((q->>'gross')::numeric=32500 and (q->>'net')::numeric=29042.45 and (q->>'employerCost')::numeric=36480,'monthly liability review reconciles canonical gross net cost');
+ perform pg_temp.expect((q->'accountNetCredits'->>'sss_regular_payable')::numeric=3000 and (q->'accountNetCredits'->>'sss_mpf_payable')::numeric=1500 and (q->'accountNetCredits'->>'sss_ec_payable')::numeric=30,'liability review preserves SSS components');
+ perform pg_temp.expect((q->'annualAdjustments'->'bir_withholding_payable'->>'debit')::numeric=1007.55 and q->>'remittanceAuthorized'='false' and q->>'coverageComplete'='false','annual refund separate and no remittance authorization');
+ q:=app.ph_month_liability_review(pg_temp.org9(1),'2026-09-01');
+ perform pg_temp.expect((q->>'gross')::numeric=4740 and (q->>'net')::numeric=4557.55 and (q->>'periodCount')::int=1 and (q->'sources'->0->>'revision')::int=2,'monthly review excludes reversed original');
+end $$;
+select set_config('request.jwt.claim.sub',pg_temp.u(3)::text,true);
+select pg_temp.denied($$select app.ph_month_liability_review(pg_temp.org9(4),'2026-02-01')$$,'42501','staff cannot review money');
+select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
+select pg_temp.denied($$select app.ph_month_liability_review('fc900000-0000-0000-0000-000000000099','2026-02-01')$$,'42501','cross tenant liability review denied');
+select pg_temp.denied($$select app.ph_month_liability_review(pg_temp.org9(4),'2026-11-01')$$,'22023','open month blocked');
+do $$ declare r text;begin
+foreach r in array array['anon','authenticated','service_role'] loop
+perform pg_temp.expect(not has_function_privilege(r,'app.ph_month_liability_review(uuid,date)','EXECUTE'),'private liability review');
+perform pg_temp.expect(not has_function_privilege(r,'app.ph_reviewed_statutory_quote(uuid,uuid,date)','EXECUTE'),'private statutory quote');
+end loop;end $$;
 rollback;
