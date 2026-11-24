@@ -49,7 +49,9 @@ begin
   raise notice '% agency reference cases passed',n;
 end $$;
 select pg_temp.invalid_contrib('sss',1,'2024-12-01');
-select pg_temp.invalid_contrib('philhealth',1,'2026-01-01');
+select pg_temp.invalid_contrib('philhealth',1,'2026-12-01');
+select pg_temp.check_contrib((app.ph_contribution_candidate('philhealth',1,'2026-01-01')->>'total')::numeric=500,'2026 floor confirmed');
+select pg_temp.check_contrib((app.ph_contribution_candidate('philhealth',100001,'2026-11-01')->>'total')::numeric=5000,'2026 ceiling confirmed');
 select pg_temp.invalid_contrib('pagibig',1,'2024-01-01');
 select pg_temp.invalid_contrib('pagibig',1,'2026-12-01');
 select pg_temp.invalid_contrib('sss',1,'2025-01-02');
