@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/Button';
-import { AccountingReleaseGate } from '@/components/AccountingReleaseGate';
+import { AccountingReview } from '@/components/AccountingReview';
 import { usePreference } from '@/state/preferences';
 import { KpiTile } from '@/components/Charts';
 import { DataTable, type Column } from '@/components/DataTable';
@@ -27,8 +27,12 @@ type SortKey = string;
 
 /** Payroll preparation: approved hours by pay code, blockers, export and period lock. */
 export default function PayrollScreen() {
+  const backend = usePreference('backend');
+  return backend === 'live' ? <Screen><AccountingReview scope="organization" /></Screen> : <DemoPayrollScreen />;
+}
+
+function DemoPayrollScreen() {
   const t = useTheme();
-  const liveAccountingBlocked = usePreference('backend') === 'live';
   const i18n = useI18n();
   const { isDesktop } = useResponsive();
   const [period, setPeriod] = useState<DateKey | undefined>(undefined);
@@ -49,10 +53,6 @@ export default function PayrollScreen() {
     ],
   });
   const rows = list.apply(p?.rows ?? []);
-
-  if (liveAccountingBlocked) {
-    return <Screen><AccountingReleaseGate /></Screen>;
-  }
 
   if (payroll.isError) {
     return (
