@@ -49,3 +49,12 @@ describe('personal payroll detailed contract',()=>{
    expect(()=>parsePersonalPayrollDetail({...personalDetail,items:[{...personalDetail.items[0],date:'2026-03-01'}]},org,employee,'2026-02-01')).toThrow();
  });
 });
+
+describe('extended payslip privacy and amount sources',()=>{
+ it('accepts exact employee-only SSS breakdown',()=>expect(parsePersonalPayrollDetail({...personalDetail,sssRegularCents:'100000',sssMpfCents:'50000'},org,employee,'2026-02-01').sssRegularCents).toBe('100000'));
+ it('rejects mismatched and partial contribution splits',()=>{
+  expect(()=>parsePersonalPayrollDetail({...personalDetail,sssRegularCents:'100001',sssMpfCents:'50000'},org,employee,'2026-02-01')).toThrow();
+  expect(()=>parsePersonalPayrollDetail({...personalDetail,sssRegularCents:'100000'},org,employee,'2026-02-01')).toThrow();
+ });
+ it('rejects simultaneous recorded and calculated amounts',()=>expect(()=>parsePersonalPayrollDetail({...personalDetail,items:[{...personalDetail.items[0],recordedAmount:'100',calculatedAmount:'100'}]},org,employee,'2026-02-01')).toThrow());
+});
