@@ -165,6 +165,8 @@ export interface DirectoryPerson extends Person {
   readonly teamName?: string;
   readonly departmentId: DepartmentId;
   readonly restDays: readonly number[];
+  /** False for live directory entries whose schedule the server redacted. */
+  readonly scheduleAvailable?: boolean;
   readonly shift: { readonly start: [number, number]; readonly end: [number, number]; readonly night?: boolean };
   readonly location: string;
 }
@@ -388,7 +390,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
   // ------------------------------------------------------------ schedules
   const onLeave = new Set<string>(); // `${userId}|${date}`
   const isScheduled = (p: DirectoryPerson, d: DateKey) =>
-    !p.restDays.includes(isoWeekday(d)) && !onLeave.has(`${p.id}|${d}`) && HOLIDAYS[d]?.kind !== 'regular';
+    p.scheduleAvailable !== false && !p.restDays.includes(isoWeekday(d)) && !onLeave.has(`${p.id}|${d}`) && HOLIDAYS[d]?.kind !== 'regular';
   const shiftWindow = (p: DirectoryPerson, d: DateKey) => {
     const endDate = p.shift.night === true ? addDays(d, 1) : d;
     return { start: at(d, p.shift.start[0], p.shift.start[1]), end: at(endDate, p.shift.end[0], p.shift.end[1]) };
@@ -824,7 +826,7 @@ export function createMockApi(options: MockApiOptions): NForceApi {
 
 
   // ------------------------------------------------------------ reporting
-  const isWorkday = (p: DirectoryPerson, d: DateKey) => !p.restDays.includes(isoWeekday(d)) && HOLIDAYS[d]?.kind !== 'regular';
+  const isWorkday = (p: DirectoryPerson, d: DateKey) => p.scheduleAvailable !== false && !p.restDays.includes(isoWeekday(d)) && HOLIDAYS[d]?.kind !== 'regular';
   const groupName = (p: DirectoryPerson) => p.teamName ?? DEPARTMENTS[p.departmentId] ?? p.departmentId;
 
   /** One record per person per day: the single source for every attendance report. */
@@ -897,8 +899,10 @@ export function createMockApi(options: MockApiOptions): NForceApi {
       PH_DEFAULT_PAY_POLICY,
     );
 
+  const seesSchedule = (p: DirectoryPerson) => p.scheduleAvailable !== false && (p.id === actor().id || can('schedule.view', p) || can('attendance.view', p) || can('timesheet.view', p));
+  const seesHierarchy = (p: DirectoryPerson) => p.id === actor().id || can('people.view', p) || seesSchedule(p) || can('timeoff.approve', p) || can('timesheet.approve', p) || can('attendance.correct', p);
   const directoryEntry = (p: DirectoryPerson): DirectoryEntry => {
-    const manager = p.managerId !== undefined ? byId.get(p.managerId) : undefined;
+    const manager = p.managerId !== undefined && seesHierarchy(p) ? byId.get(p.managerId) : undefined;
     return {
       person: view(p),
       role: p.role,
@@ -1515,19 +1519,19 @@ export function createMockApi(options: MockApiOptions): NForceApi {
         const digits = (n: number, len: number) => String(Math.abs(hash(`${p.id}${n}`)) % 10 ** len).padStart(len, '0');
         return {
           ...directoryEntry(p),
-          chain: chainOf(p).map((id) => view(person(id))),
+          chain: seesHierarchy(p) ? chainOf(p).map((id) => view(person(id))) : [],
           directReports: people()
-            .filter((x) => x.managerId === p.id)
+            .filter((x) => x.managerId === p.id && seesHierarchy(x))
             .map((x) => ({ person: view(x), role: x.role, ...(x.teamName !== undefined ? { teamName: x.teamName } : {}), reports: people().filter((y) => y.managerId === x.id).length })),
           access: memberAccess(me, p),
-          location: p.location,
-          shift: `${fmt(p.shift.start)}–${fmt(p.shift.end)}`,
-          restDays: p.restDays,
-          workEmail,
+          location: isMe || sees('people.view') || seesSchedule(p) ? p.location : '',
+          shift: seesSchedule(p) ? `${fmt(p.shift.start)}–${fmt(p.shift.end)}` : '—',
+          restDays: seesSchedule(p) ? p.restDays : [],
+          workEmail: ds === undefined ? workEmail : '—',
           ...(leaveVisible ? { leaveCredits, leaveHistory } : {}),
           ...(attendance !== undefined ? { attendance } : {}),
           ...(overtime !== undefined ? { overtime } : {}),
-          ...(sensitive
+          ...(sensitive && ds === undefined
             ? {
                 sensitive: {
                   employeeId: `NF-${String(1000 + (h % 9000))}`,

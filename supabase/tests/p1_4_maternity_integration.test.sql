@@ -34,4 +34,7 @@ select pg_temp.expect((app.ph_post_cutoff_2026(pg_temp.org9(27),pg_temp.u(2),'20
 select pg_temp.expect((select basic is not null from (select evidence->>'basic' basic from app.ph_effective_monetary where organization_id=pg_temp.org9(27) and period_start='2026-07-01')s),'ordinary monthly calculator resumed');
 select pg_temp.expect((select net=32671.01 and exempt=6128.56 and taxable=27550 from app.ph_effective_monetary where organization_id=pg_temp.org9(27) and period_start='2026-07-01'),'ordinary resumed gross to net exact');
 select pg_temp.expect((select count(*)=1 from app.ph_benefit_event where organization_id=pg_temp.org9(27)),'single canonical thirteenth benefit event');
+\if :{?p15_capture}
+\ir p1_5_golden_capture.sql
+\endif
 rollback;

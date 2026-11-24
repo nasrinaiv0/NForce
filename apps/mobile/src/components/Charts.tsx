@@ -338,6 +338,8 @@ export function KpiTile({
   delta,
   better,
   hint,
+  wrapContent = false,
+  stacked = false,
 }: {
   label: string;
   value: string;
@@ -346,20 +348,23 @@ export function KpiTile({
   /** Which direction is good for this metric. */
   better?: 'up' | 'down';
   hint?: string;
+  /** Keep exact totals and explanatory text visible on dense financial screens. */
+  wrapContent?: boolean;
+  stacked?: boolean;
 }) {
   const t = useTheme();
   const good = delta !== undefined && better !== undefined && delta.direction !== 'flat' ? delta.direction === better : undefined;
   const color = good === undefined ? t.colors.textSecondary : good ? t.colors.success : t.colors.danger;
   return (
     <View
-      style={[styles.kpi, { backgroundColor: t.colors.surface, borderRadius: t.shape.card }]}
+      style={[styles.kpi, stacked && { flexBasis: 'auto', flexGrow: 0, flexShrink: 0, width: '100%', minWidth: 0 }, { backgroundColor: t.colors.surface, borderRadius: t.shape.card }]}
       accessible
       accessibilityLabel={`${label}: ${value}${delta !== undefined ? `, ${delta.text}` : ''}`}
     >
-      <Text variant="footnote" color="textSecondary" numberOfLines={1}>
+      <Text variant="footnote" color="textSecondary" numberOfLines={wrapContent ? undefined : 1}>
         {label}
       </Text>
-      <Text variant="title" tabular numberOfLines={1} adjustsFontSizeToFit>
+      <Text variant="title" tabular numberOfLines={wrapContent ? undefined : 1} adjustsFontSizeToFit={!wrapContent}>
         {value}
       </Text>
       {delta !== undefined && (
@@ -371,7 +376,7 @@ export function KpiTile({
         </View>
       )}
       {hint !== undefined && (
-        <Text variant="caption" color="textTertiary" numberOfLines={2}>
+        <Text variant="caption" color="textTertiary" numberOfLines={wrapContent ? undefined : 2}>
           {hint}
         </Text>
       )}

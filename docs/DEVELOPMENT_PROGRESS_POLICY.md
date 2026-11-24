@@ -74,3 +74,7 @@ In a follow-up engineering change, add CI validation that:
 - optionally flags source changes without relevant docs changes for reviewer attention.
 
 Avoid brittle rules that require a progress-log edit for every trivial formatting-only commit. The policy applies to meaningful development progress, with exceptions explained in the PR.
+
+## Mandatory per-commit amendment — 2026-11-24
+
+The owner-approved [master roadmap section 13](architecture/NForce_Enterprise_Master_Implementation_Roadmap.md#13-mandatory-documentation-before-every-github-commit-and-push) supersedes the earlier meaningful-change threshold and exemptions. Every human or automated contributor must document every commit before committing or pushing, including trivial and documentation-only changes. Each commit must include an append-only progress-log entry; other documentation is required when relevant, otherwise explain non-applicability in that entry. Reviewers must reject undocumented work. Automated per-commit CI validation and required branch checks are planned, not enabled by this documentation amendment; separate authorization is required for repository enforcement changes.

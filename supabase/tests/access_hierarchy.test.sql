@@ -94,6 +94,78 @@ do $$ begin
 end $$;
 reset role;
 
+-- Monetary confidentiality is independent of reporting-line and HR authority.
+-- Enable fictional review gate to distinguish authorization from absent data.
+insert into app.accounting_review_access(organization_id,evidence_reference,enabled_by,expires_at) values(pg_temp.org(),'fictional independent review',pg_temp.u('owner'),now()+interval '1 day');
+select pg_temp.act_as(pg_temp.u('payroll'));
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'P0001','payroll passes role gate but absent monetary data remains blocked');
+reset role;
+select pg_temp.act_as(pg_temp.u('owner'));
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'P0001','owner passes role gate but absent monetary data remains blocked');
+reset role;
+select pg_temp.act_as(pg_temp.u('staff'));
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','staff cannot access management payroll');
+reset role;
+select pg_temp.act_as(pg_temp.u('sup'));
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','supervisor cannot access management payroll');
+reset role;
+select pg_temp.act_as(pg_temp.u('mgr'));
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','department manager cannot access management payroll');
+select pg_temp.expect(not app.has_permission(pg_temp.org(),'attendance.view',pg_temp.u('hr')),'manager cannot see another department');
+reset role;
+select pg_temp.act_as(pg_temp.u('vp'));
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','executive aggregate reporting does not grant payroll access');
+reset role;
+select pg_temp.act_as(pg_temp.u('hr'));
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','HR cannot access management payroll');
+reset role;
+select pg_temp.act_as(pg_temp.u('it'));
+select pg_temp.raises($$select public.payroll_management_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','IT administration does not grant payroll access');
+reset role;
+select pg_temp.act_as(pg_temp.u('outsider'));
+select pg_temp.raises($$select public.payroll_self_snapshot(pg_temp.org(),'2026-01-12')$$,'42501','foreign organization owner cannot read personal payroll in another tenant');
+reset role;
+
+-- Directory field and direct-table access must not inherit broad directory permission.
+select pg_temp.act_as(pg_temp.u('staff'));
+select pg_temp.expect((select count(*) from public.org_directory(pg_temp.org()) where user_id=pg_temp.u('staff3'))=1,'basic peer directory retained');
+select pg_temp.expect((select shift_start is null and shift_end is null and rest_days is null and reports_to_user is null and location='' from public.org_directory(pg_temp.org()) where user_id=pg_temp.u('staff3')),'staff peer confidential directory fields redacted');
+select pg_temp.expect((select shift_start is not null and rest_days is not null and reports_to_user=pg_temp.u('sup') from public.org_directory(pg_temp.org()) where user_id=auth.uid()),'staff own schedule and reporting line retained');
+select pg_temp.expect((select count(*) from public.memberships where user_id=pg_temp.u('staff3'))=0,'staff cannot read raw peer membership');
+select pg_temp.raises($$select shift_start from public.memberships$$,'42501','raw shift column denied');
+select pg_temp.raises($$select reports_to from public.memberships$$,'42501','raw reporting column denied');
+select pg_temp.raises($$select rest_days from public.memberships$$,'42501','raw rest days denied');
+select pg_temp.raises($$select location from public.memberships$$,'42501','raw location denied');
+select pg_temp.raises($$select * from public.memberships$$,'42501','raw wildcard denied');
+reset role;
+select pg_temp.act_as(pg_temp.u('sup'));
+select pg_temp.expect((select shift_start is not null and reports_to_user=auth.uid() from public.org_directory(pg_temp.org()) where user_id=pg_temp.u('staff')),'supervisor authorized direct report fields retained');
+select pg_temp.expect((select shift_start is null and reports_to_user is null from public.org_directory(pg_temp.org()) where user_id=pg_temp.u('staff3')),'supervisor cannot inspect peer team schedule or hierarchy');
+reset role;
+select pg_temp.act_as(pg_temp.u('mgr'));
+select pg_temp.expect((select shift_start is not null from public.org_directory(pg_temp.org()) where user_id=pg_temp.u('staff3')),'manager department scope retained');
+select pg_temp.expect((select shift_start is null and reports_to_user is null from public.org_directory(pg_temp.org()) where user_id=pg_temp.u('hr')),'manager other department fields redacted');
+select pg_temp.expect((select shift_start is null from public.org_directory(pg_temp.org()) where user_id=pg_temp.u('vp')),'manager cannot inspect superior schedule');
+reset role;
+select pg_temp.act_as(pg_temp.u('vp'));
+select pg_temp.expect((select shift_start is null and reports_to_user=pg_temp.u('sup2') from public.org_directory(pg_temp.org()) where user_id=pg_temp.u('staff3')),'executive line approval does not reveal individual schedules');
+reset role;
+select pg_temp.act_as(pg_temp.u('hr'));
+select pg_temp.expect((select shift_start is not null and reports_to_user=pg_temp.u('sup') from public.org_directory(pg_temp.org()) where user_id=pg_temp.u('staff')),'HR authorized attendance and people fields retained');
+reset role;
+select pg_temp.act_as(pg_temp.u('payroll'));
+select pg_temp.expect((select shift_start is not null from public.org_directory(pg_temp.org()) where user_id=pg_temp.u('staff')),'payroll authorized attendance inputs retained');
+reset role;
+select pg_temp.act_as(pg_temp.u('it'));
+select pg_temp.expect((select shift_start is null and reports_to_user is null and location='' from public.org_directory(pg_temp.org()) where user_id=pg_temp.u('staff')),'IT admin does not inherit confidential directory fields');
+reset role;
+select pg_temp.act_as(pg_temp.u('owner'));
+select pg_temp.expect((select shift_start is not null and reports_to_user=pg_temp.u('sup') from public.org_directory(pg_temp.org()) where user_id=pg_temp.u('staff')),'owner authorized workforce view retained');
+reset role;
+select pg_temp.act_as(pg_temp.u('outsider'));
+select pg_temp.expect((select count(*) from public.org_directory(pg_temp.org()))=0,'cross tenant directory denied');
+reset role;
+
 -- ---------------------------------------------------------------- routing
 select pg_temp.submit('mgr', 'mgr_fix', 'correction', '{"date":"2026-11-20"}');
 select pg_temp.submit('staff', 'staff_off', 'day_off', '{"start":"2026-12-10","end":"2026-12-10"}');

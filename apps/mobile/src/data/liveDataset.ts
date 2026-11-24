@@ -47,9 +47,9 @@ export interface DirectoryRow {
   team_name: string | null;
   reports_to_user: string | null;
   role_key: string | null;
-  shift_start: string;
-  shift_end: string;
-  rest_days: number[];
+  shift_start: string | null;
+  shift_end: string | null;
+  rest_days: number[] | null;
 }
 export interface EventRow { id: string; user_id: string; type: AttendanceEventType; occurred_at: string; source: AttendanceSource; idempotency_key: string; note: string | null }
 export interface RequestRow { id: string; requester_id: string; kind: RequestKind; payload: RequestPayload; status: ApprovalStatus; created_at: string }
@@ -123,9 +123,11 @@ function auditDetail(row: AuditRow): string {
 
 export function buildLiveData(rows: LiveRows, ctx: { readonly workspace: Workspace; readonly userId: string }): LiveData {
   const people: DirectoryPerson[] = rows.directory.map((r) => {
-    const [startH, startM] = hm(r.shift_start);
-    const [endH, endM] = hm(r.shift_end);
-    const night = endH * 60 + endM <= startH * 60 + startM;
+    const scheduleAvailable = r.shift_start !== null && r.shift_end !== null && r.rest_days !== null;
+    // Internal sentinel only; consumers must not display or classify a redacted schedule.
+    const [startH, startM] = hm(r.shift_start ?? '00:00');
+    const [endH, endM] = hm(r.shift_end ?? '00:00');
+    const night = scheduleAvailable && endH * 60 + endM <= startH * 60 + startM;
     return {
       id: UserId(r.user_id),
       name: r.display_name,
@@ -134,7 +136,8 @@ export function buildLiveData(rows: LiveRows, ctx: { readonly workspace: Workspa
       hue: hueOf(r.user_id),
       role: isRole(r.role_key) ? r.role_key : 'staff',
       departmentId: (r.department_id ?? UNASSIGNED) as DepartmentId,
-      restDays: r.rest_days,
+      scheduleAvailable,
+      restDays: r.rest_days ?? [],
       shift: { start: [startH, startM], end: [endH, endM], ...(night ? { night: true } : {}) },
       location: r.location,
       ...(r.reports_to_user !== null ? { managerId: UserId(r.reports_to_user) } : {}),

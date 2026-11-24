@@ -19,11 +19,49 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Capture read-only dependency advisory evidence
+        run: |
+          set +e
+          npm audit --json --ignore-scripts --package-lock-only --registry=https://registry.npmjs.org > "$RUNNER_TEMP/nforce-audit.json"
+          audit_status=$?
+          set -e
+          AUDIT_STATUS="$audit_status" node --input-type=commonjs <<'NODE'
+          const fs = require('node:fs');
+          const audit = JSON.parse(fs.readFileSync(process.env.RUNNER_TEMP + '/nforce-audit.json', 'utf8'));
+          if (audit.error || !audit.metadata?.vulnerabilities || !audit.vulnerabilities) {
+            throw new Error('Registry did not return a complete advisory report');
+          }
+          const rows = Object.values(audit.vulnerabilities).map(v => ({
+            name: v.name, severity: v.severity, isDirect: v.isDirect,
+            range: v.range, nodes: v.nodes, effects: v.effects, fixAvailable: v.fixAvailable,
+            via: v.via.map(a => typeof a === 'string' ? a : ({
+              source: a.source, name: a.name, title: a.title, url: a.url,
+              severity: a.severity, range: a.range, cwe: a.cwe, cvss: a.cvss
+            }))
+          }));
+          console.log('NFORCE_NPM_AUDIT ' + JSON.stringify({exitCode: Number(process.env.AUDIT_STATUS), counts: audit.metadata.vulnerabilities, rows}));
+          if (![0, 1].includes(Number(process.env.AUDIT_STATUS))) throw new Error('Unexpected npm audit exit status');
+          if (audit.metadata.vulnerabilities.total !== 0 || Number(process.env.AUDIT_STATUS) !== 0) throw new Error('Dependency advisory gate failed');
+          NODE
+      - name: Check scoped Expo fingerprint dependency
+        run: |
+          npm ls minimatch --all
+          node --input-type=commonjs <<'NODE'
+          const assert = require('node:assert/strict');
+          const fromFingerprint = require('node:module').createRequire(require.resolve('@expo/fingerprint'));
+          const { minimatch, Minimatch } = fromFingerprint('minimatch');
+          assert.equal(fromFingerprint('minimatch/package.json').version, '11.0.9');
+          assert.equal(minimatch('android/app/build.gradle', '**/*.gradle'), true);
+          assert.equal(new Minimatch('**/node_modules/**', { dot: true }).match('app/node_modules/example/index.js'), true);
+          assert.equal(minimatch('app/src/index.ts', '**/*.gradle'), false);
+          NODE
       - run: npm run typecheck
       - run: npm run lint
       - name: Test private document envelope cryptography
@@ -39,6 +77,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Run migrations and SQL tests on a throwaway PostgreSQL
         run: ./scripts/test-db.sh
 
@@ -48,6 +88,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -82,6 +124,7 @@ jobs:
         run: npx expo export --platform web --output-dir dist
       - name: Install pinned browser harness
         run: |
+          sudo apt-get update -qq && sudo apt-get install -y poppler-utils
           npm install --prefix /tmp/nforce-browser --no-audit --no-fund --save-exact playwright@1.56.1
           /tmp/nforce-browser/node_modules/.bin/playwright install --with-deps chromium
       - name: Render and test phone and desktop

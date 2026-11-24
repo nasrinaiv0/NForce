@@ -40,3 +40,67 @@ export function formatPhpCents(value: string) {
   const s = value.padStart(3, '0');
   return '₱' + s.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '.' + s.slice(-2);
 }
+
+/** Exact employee-only response: reject accidental additional confidential fields. */
+const personalPayrollSchema = z.strictObject({
+  organizationId: z.uuid(), userId: z.uuid(),
+  periodStart: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), periodEnd: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  revision: z.number().int().min(1).max(2), source: z.literal('released-personal-accrual-v1'),
+  grossCents: cents, employeeContributionCents: cents, sssEmployeeCents: cents,
+  philhealthEmployeeCents: cents, pagibigEmployeeCents: cents, withholdingCents: cents, netCents: cents,
+}).refine(s => s.periodEnd >= s.periodStart &&
+  BigInt(s.employeeContributionCents) === BigInt(s.sssEmployeeCents) + BigInt(s.philhealthEmployeeCents) + BigInt(s.pagibigEmployeeCents) &&
+  BigInt(s.grossCents) === BigInt(s.netCents) + BigInt(s.employeeContributionCents) + BigInt(s.withholdingCents));
+export function parsePersonalPayroll(raw: unknown, organization: string, user: string, period: string) {
+  const s = personalPayrollSchema.parse(raw);
+  if (s.organizationId !== organization || s.userId !== user || s.periodStart !== period) throw new Error('Personal payroll scope mismatch');
+  return s;
+}
+
+const exactDecimal = z.string().regex(/^\d{1,20}(?:\.\d{1,40})?$/);
+const evidenceDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const detailItem = z.strictObject({
+ date: evidenceDate.nullable(), code: z.string().regex(/^(?:(?:REG|RD|SH|SH_RD|RH|RH_RD|DH|DH_RD)(?:_OT)?(?:_ND)?|guaranteed_salary|paid_leave|paid_regular_holiday|unpaid_nonwork|monthly_covered|maternity_covered|commission|taxable_allowance|other_taxable|benefit|other_recorded)$/),
+ start: z.string().max(50).nullable(), end: z.string().max(50).nullable(),
+ seconds: exactDecimal.nullable(), hourlyRate: exactDecimal.nullable(), multiplier: exactDecimal.nullable(), recordedAmount: exactDecimal.nullable(), calculatedAmount: exactDecimal.nullable().optional(),
+ siteReference: z.string().max(160).nullable(),
+ method: z.enum(['monthly_increment','hourly_factor','salary_allocation','recorded_benefit','recorded_amount','period_total_only']),
+});
+const personalDetailSchema = z.strictObject({
+ summary: personalPayrollSchema, frequency: z.enum(['daily','weekly','semi-monthly','monthly']),
+ exemptCents: cents, taxableCents: cents, taxDeductibleCents: cents, basicCents: cents.nullable(), premiumCents: cents.nullable(),
+ items: z.array(detailItem).max(10000), paymentConfirmed: z.literal(false),
+ releasedAt: z.string().max(50).nullable().optional(), sssRegularCents: cents.nullable().optional(), sssMpfCents: cents.nullable().optional(),
+}).refine(d=>BigInt(d.summary.grossCents)===BigInt(d.exemptCents)+BigInt(d.taxableCents)+BigInt(d.taxDeductibleCents) && BigInt(d.taxDeductibleCents)<=BigInt(d.summary.employeeContributionCents) && (((d.sssRegularCents === null || d.sssRegularCents === undefined) && (d.sssMpfCents === null || d.sssMpfCents === undefined)) || ((d.sssRegularCents !== null && d.sssRegularCents !== undefined) && (d.sssMpfCents !== null && d.sssMpfCents !== undefined) && BigInt(d.sssRegularCents)+BigInt(d.sssMpfCents)===BigInt(d.summary.sssEmployeeCents))) && d.items.every(i=>(i.date===null || (i.date>=d.summary.periodStart&&i.date<=d.summary.periodEnd)) && ((i.calculatedAmount === null || i.calculatedAmount === undefined) || i.recordedAmount === null)));
+export type PersonalPayrollDetail = z.infer<typeof personalDetailSchema>;
+export function parsePersonalPayrollDetail(raw: unknown, organization: string, user: string, period: string) {
+ const d=personalDetailSchema.parse(raw);
+ parsePersonalPayroll(d.summary,organization,user,period);
+ return d;
+}
+
+/** Display-only cent rounding; exact source amounts and posted totals are unchanged. */
+export function formatPayslipDecimal(value:string) {
+ const [whole='0',fraction='']=value.split('.');
+ const rounded=BigInt(whole)*100n+BigInt(fraction.padEnd(3,'0').slice(0,2))+(Number(fraction.padEnd(3,'0')[2])>=5?1n:0n);
+ return formatPhpCents(rounded.toString());
+}
+export function formatPayslipInstant(value:string,locale:'en'|'fil'|'es'):string|null {
+ if(!/(?:Z|[+-]\d{2}:\d{2})$/i.test(value))return null;
+ const date=new Date(value);
+ if(!Number.isFinite(date.getTime()))return null;
+ return new Intl.DateTimeFormat(locale==='en'?'en-PH':locale==='fil'?'fil-PH':'es-ES',{timeZone:'Asia/Manila',year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}).format(date);
+}
+
+const historySchema=z.strictObject({organizationId:z.uuid(),userId:z.uuid(),year:z.literal(2026),coverageComplete:z.literal(false),periods:z.array(personalPayrollSchema).max(366),periodCount:z.number().int().min(0).max(366),grossCents:cents,employeeContributionCents:cents,withholdingCents:cents,netCents:cents,exemptCents:cents,taxableCents:cents}).refine(h=>h.periodCount===h.periods.length&&new Set(h.periods.map(p=>p.periodStart)).size===h.periodCount&&h.periods.every(p=>p.organizationId===h.organizationId&&p.userId===h.userId&&p.periodEnd.startsWith('2026-'))&&(['grossCents','employeeContributionCents','withholdingCents','netCents'] as const).every(k=>h.periods.reduce((sum,p)=>sum+BigInt(p[k]),0n)===BigInt(h[k])));
+export function parsePayrollHistory(raw:unknown,org:string,user:string){
+ const h=historySchema.parse(raw);
+ if(h.organizationId!==org||h.userId!==user)throw new Error('Payroll history scope mismatch');
+ return h;
+}
+export const disputeReceiptSchema=z.strictObject({status:z.literal('submitted'),periodStart:evidenceDate,revision:z.number().int().min(1).max(2),itemIndex:z.number().int().min(0).max(9999),submittedAt:z.string().max(50)});
+export function parseDisputeReceipts(raw:unknown,period:string,revision:number){
+ const rows=z.array(disputeReceiptSchema).max(10000).parse(raw);
+ if(rows.some(r=>r.periodStart!==period||r.revision!==revision))throw new Error('Dispute scope mismatch');
+ return rows;
+}
