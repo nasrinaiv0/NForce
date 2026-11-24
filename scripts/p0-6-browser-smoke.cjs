@@ -141,6 +141,21 @@ const assert = require('node:assert/strict');
         const pdf=require('node:fs').readFileSync(pdfPath,'utf8');
         const extracted=require('node:child_process').execFileSync('pdftotext',['-layout',pdfPath,'-'],{encoding:'utf8'});
         assert.ok(pdf.startsWith('%PDF-1.4')&&pdf.includes('/FontFile2')&&extracted.includes('FICTIONAL SAMPLE')&&extracted.includes('₱26,542.45')&&!/employer contribution|employer cost/i.test(extracted));
+        const embedded=pdf.match(/6 0 obj\n<< \/Length (\d+) \/Filter \/ASCII85Decode \/Length1 (\d+) >>\nstream\n([^\n]*)\nendstream/);
+        assert.ok(embedded,'embedded ASCII85 font stream');
+        const font85=embedded[3];
+        assert.ok(font85.endsWith('~>')&&font85.length===Number(embedded[1])&&Number(embedded[2])===343308);
+        const decodedFont=[];let digits=[];
+        for(const c of font85.slice(0,-2)){
+          if(c==='z'){assert.equal(digits.length,0);decodedFont.push(0,0,0,0);continue;}
+          assert.ok(c.charCodeAt(0)>=33&&c.charCodeAt(0)<=117);
+          digits.push(c.charCodeAt(0)-33);
+          if(digits.length===5){const word=digits.reduce((a,b)=>a*85+b,0);assert.ok(word<=0xffffffff);decodedFont.push(Math.floor(word/16777216)&255,Math.floor(word/65536)&255,Math.floor(word/256)&255,word&255);digits=[];}
+        }
+        assert.equal(digits.length,0,'original font length is divisible by four');
+        assert.equal(decodedFont.length,343308);
+        assert.equal(require('node:crypto').createHash('sha256').update(Buffer.from(decodedFont)).digest('hex'),'5f5d02214616ec855dff916d40d58bf87520be052dcdbc237d091f222c13aaa4');
+        assert.ok(Buffer.byteLength(pdf,'utf8')<450000,'PDF size budget');
         require('node:child_process').execFileSync('pdftoppm',['-f','1','-l','1','-r','120','-png',pdfPath,'/tmp/nforce-browser/screenshots/sample-payslip-render']);
       }
       await page.screenshot({path:'/tmp/nforce-browser/screenshots/role-'+role+'-payslip.png',fullPage:true});

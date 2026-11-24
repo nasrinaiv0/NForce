@@ -1,26 +1,8 @@
-import { fontBase64, fontByteLength, glyphMap } from './payslipFont';
+import { fontAscii85, fontByteLength, glyphMap } from './payslipFont';
 
 // ASCII transport keeps offsets identical for web Blob and native File.write.
 // Visible text uses an embedded Unicode CID font with an explicit ToUnicode map.
 const hex4=(n:number)=>n.toString(16).padStart(4,'0').toUpperCase();
-const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-let embeddedFont:string|undefined;
-function fontHex():string{
- if(embeddedFont!==undefined)return embeddedFont;
- const chunks:string[]=[];
- for(let i=0;i<fontBase64.length;i+=4){
-  const a=alphabet.indexOf(fontBase64.charAt(i)),b=alphabet.indexOf(fontBase64.charAt(i+1));
-  const c=alphabet.indexOf(fontBase64.charAt(i+2)),d=alphabet.indexOf(fontBase64.charAt(i+3));
-  const v=(a<<18)|(b<<12)|(Math.max(c,0)<<6)|Math.max(d,0);
-  chunks.push(((v>>16)&255).toString(16).padStart(2,'0'));
-  if(c>=0)chunks.push(((v>>8)&255).toString(16).padStart(2,'0'));
-  if(d>=0)chunks.push((v&255).toString(16).padStart(2,'0'));
- }
- const hex=chunks.join('');
- if(hex.length!==fontByteLength*2)throw new Error('Invalid embedded payslip font');
- embeddedFont=hex+'>';
- return embeddedFont;
-}
 function normalized(value:string):string[]{
  return Array.from(value.normalize('NFC')).map(ch=>{
   const cp=ch.codePointAt(0);
@@ -71,7 +53,7 @@ export function renderUnicodePayslip(lines:readonly string[]):string{
   '<< /Type /Font /Subtype /Type0 /BaseFont /NotoSansMono-Regular /Encoding /Identity-H /DescendantFonts [4 0 R] /ToUnicode 7 0 R >>',
   '<< /Type /Font /Subtype /CIDFontType2 /BaseFont /NotoSansMono-Regular /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor 5 0 R /DW 600 /W [1 ['+widths+']] /CIDToGIDMap 8 0 R >>',
   '<< /Type /FontDescriptor /FontName /NotoSansMono-Regular /Flags 33 /FontBBox [-616 -389 1800 1229] /ItalicAngle 0 /Ascent 1069 /Descent -293 /CapHeight 714 /StemV 80 /FontFile2 6 0 R >>',
-  stream(fontHex(),'/Filter /ASCIIHexDecode /Length1 '+fontByteLength),
+  stream(fontAscii85,'/Filter /ASCII85Decode /Length1 '+fontByteLength),
   stream(unicode),stream(gidMap,'/Filter /ASCIIHexDecode')
  ];
  const kids:string[]=[];

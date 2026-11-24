@@ -48,6 +48,19 @@ jobs:
           }));
           console.log('NFORCE_NPM_AUDIT ' + JSON.stringify({exitCode: Number(process.env.AUDIT_STATUS), counts: audit.metadata.vulnerabilities, rows}));
           if (![0, 1].includes(Number(process.env.AUDIT_STATUS))) throw new Error('Unexpected npm audit exit status');
+          if (audit.metadata.vulnerabilities.total !== 0 || Number(process.env.AUDIT_STATUS) !== 0) throw new Error('Dependency advisory gate failed');
+          NODE
+      - name: Check scoped Expo fingerprint dependency
+        run: |
+          npm ls minimatch --all
+          node --input-type=commonjs <<'NODE'
+          const assert = require('node:assert/strict');
+          const fromFingerprint = require('node:module').createRequire(require.resolve('@expo/fingerprint'));
+          const { minimatch, Minimatch } = fromFingerprint('minimatch');
+          assert.equal(fromFingerprint('minimatch/package.json').version, '11.0.9');
+          assert.equal(minimatch('android/app/build.gradle', '**/*.gradle'), true);
+          assert.equal(new Minimatch('**/node_modules/**', { dot: true }).match('app/node_modules/example/index.js'), true);
+          assert.equal(minimatch('app/src/index.ts', '**/*.gradle'), false);
           NODE
       - run: npm run typecheck
       - run: npm run lint
@@ -64,6 +77,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Run migrations and SQL tests on a throwaway PostgreSQL
         run: ./scripts/test-db.sh
 
@@ -73,6 +88,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
