@@ -185,7 +185,7 @@ begin
  due:=(report.totals->>p_agency)::numeric;
  select coalesce(sum(x.amount),0) into paid from app.ph_remittance_receipt x join app.ph_remittance_journal j using(organization_id,agency,receipt_reference) where x.organization_id=p_org and x.month_start=r.month_start and x.agency=p_agency;
  if due is null or paid+r.amount>due then raise exception 'remittance exceeds reviewed liability' using errcode='P0001'; end if;
- insert into app.ph_remittance_journal values(p_org,p_agency,p_reference,auth.uid(),jsonb_build_array(jsonb_build_object('account',p_agency||'_payable','debit',r.amount,'credit',0),jsonb_build_object('account','bank','debit',0,'credit',r.amount)),r.amount,r.amount);
+ insert into app.ph_remittance_journal values(p_org,p_agency,p_reference,auth.uid(),jsonb_build_array(jsonb_build_object('account',case when p_agency='bir' then 'withholding_payable' else p_agency||'_payable' end,'debit',r.amount,'credit',0),jsonb_build_object('account','bank','debit',0,'credit',r.amount)),r.amount,r.amount);
  insert into public.audit_events(organization_id,actor_id,action,entity,entity_id,data) values(p_org,auth.uid(),'accounting.ph_remittance_reviewed','remittance',p_reference,jsonb_build_object('agency',p_agency,'month',r.month_start));
 end $$;
 -- A reviewed report is a closed reconciliation boundary; later monetary
@@ -402,7 +402,7 @@ begin
  or exists(select 1 from jsonb_array_elements(s.reconciliation->'payLines') x where (x->>'date')::date=d or (x->>'workday')::date=d)
  then raise exception 'invalid or overlapping paid nonwork' using errcode='22023'; end if;
  select * into ev_day from app.ph_workday_evidence where organization_id=p_org and user_id=p_user and period_start=p_period and work_date=d;
- if not found or (l->>'kind'='paid_regular_holiday' and ev_day.calendar_classes->>d::text not in ('regular_holiday','regular_holiday_rest')) then raise exception 'nonwork calendar evidence missing' using errcode='P0001'; end if;
+ if not found or (l->>'kind'='paid_regular_holiday' and coalesce(ev_day.calendar_classes->>d::text,'') not in ('regular_holiday','regular_holiday_rest')) then raise exception 'nonwork calendar evidence missing' using errcode='P0001'; end if;
  select * into h from app.ph_employment_history where (organization_id,user_id,effective_on,recorded_at)=(ev_day.organization_id,ev_day.user_id,ev_day.employment_effective_on,ev_day.employment_recorded_at);
  if l->>'kind'='paid_leave' then
  select * into allocation from app.ph_paid_leave_allocation where organization_id=p_org and user_id=p_user and period_start=p_period and work_date=d;
@@ -418,6 +418,10 @@ begin
  lines:=lines||jsonb_build_array(l||jsonb_build_object('unroundedAmount',line_amount,'employmentRevision',h.recorded_at));
  end loop;
  if exists(select 1 from app.ph_paid_leave_allocation x where x.organization_id=p_org and x.user_id=p_user and x.period_start=p_period and not(x.work_date=any(seen))) then raise exception 'unreconciled paid leave day' using errcode='P0001'; end if;
+ if exists(select 1 from public.approval_requests q where q.organization_id=p_org and q.requester_id=p_user and q.kind='leave' and q.status='approved'
+ and (q.payload->>'start')::date<=pd and (q.payload->>'end')::date>=p_period
+ and not exists(select 1 from app.ph_paid_leave_allocation x where x.organization_id=p_org and x.user_id=p_user and x.period_start=p_period and x.request_id=q.id))
+ then raise exception 'approved leave requires classified allocation' using errcode='P0001'; end if;
  for l in select value from jsonb_array_elements(a.payload->'supplemental') loop
  line_amount:=(l->>'amount')::numeric;
  if l->>'code' is null or l->>'code' not in ('commission','taxable_allowance','other_taxable') or line_amount is null or line_amount<0 or line_amount>1000000000 or line_amount<>round(line_amount,2) or length(btrim(coalesce(l->>'reference','')))<8 then raise exception 'invalid supplemental evidence' using errcode='22023'; end if;
@@ -455,8 +459,9 @@ begin
  total:=gross+er;
  journal:=jsonb_build_array(jsonb_build_object('account','wage_expense','debit',gross,'credit',0),
  jsonb_build_object('account','employer_contribution_expense','debit',er,'credit',0),
- jsonb_build_object('account','employee_contribution_payable','debit',0,'credit',ee),
- jsonb_build_object('account','employer_contribution_payable','debit',0,'credit',er),
+ jsonb_build_object('account','sss_payable','debit',0,'credit',coalesce((contrib->'sss'->>'total')::numeric,0)),
+ jsonb_build_object('account','philhealth_payable','debit',0,'credit',coalesce((contrib->'philhealth'->>'total')::numeric,0)),
+ jsonb_build_object('account','pagibig_payable','debit',0,'credit',coalesce((contrib->'pagibig'->>'total')::numeric,0)),
  jsonb_build_object('account','withholding_payable','debit',0,'credit',tax),
  jsonb_build_object('account','net_payable','debit',0,'credit',net));
  if (select sum((x->>'debit')::numeric) from jsonb_array_elements(journal)x)<>total
