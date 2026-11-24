@@ -23,8 +23,6 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Inspect pinned native SecureStore registry metadata
-        run: npm view expo-secure-store@58.0.3 version dist.integrity dist.tarball dependencies peerDependencies --json
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint

@@ -242,3 +242,5 @@ Copy and complete for each meaningful change:
 ## 2026-11-24 — P0.5 private review candidate
 
 - PR #11 exact-head CI/Vercel green. Documented review RPC, short-lived tenant gate, bounded dual-control ingestion and authorization locks before commit. Native package metadata verification and UI work follow. No remote SQL, resources or production changes.
+
+- Before second commit: registry metadata verified for SDK 58 SecureStore 58.0.3 via isolated CI job 138162105020. Added pinned integrity lock entry, native OS-vault adapter and tests, server-only read review UI and auth-generation guard, independent ingestion and role-race regression. Browser remains memory-only; public writes remain disabled. Native real-device and rendered browser acceptance outstanding.

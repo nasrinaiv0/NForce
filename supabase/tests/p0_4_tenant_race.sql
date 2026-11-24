@@ -11,5 +11,11 @@ begin
   exception when serialization_failure then
     raise notice 'ok - same-tenant writer retries; unrelated tenant acquired lock';
   end;
+  begin
+    delete from public.membership_roles where membership_id in (select id from public.memberships where organization_id='fb100000-0000-0000-0000-000000000001');
+    raise exception 'same-tenant role change not rejected';
+  exception when serialization_failure then
+    raise notice 'ok - authorization role mutation waits for accounting transaction via retry';
+  end;
 end $$;
 rollback;
