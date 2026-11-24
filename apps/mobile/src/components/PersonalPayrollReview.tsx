@@ -82,7 +82,7 @@ function PayrollEvidence({detail,periodStart,periodEnd}:{detail:typeof fictional
   <Text variant="footnote" color="textSecondary">{c.payment}</Text>
   {row(c.when,periodStart!==undefined&&periodEnd!==undefined?periodStart+' – '+periodEnd:c.unknown)}
   {row(c.period,detail.frequency)}
-  {[ [c.base,detail.basicCents],[c.premium,detail.premiumCents],[c.exempt,detail.exemptCents],[c.deductible,detail.taxDeductibleCents],[c.taxable,detail.taxableCents] ].map(([label,value])=>row(label??'',value==null?c.unknown:formatPhpCents(value)))}
+  {[ [c.base,detail.basicCents],[c.premium,detail.premiumCents],[c.exempt,detail.exemptCents],[c.deductible,detail.taxDeductibleCents],[c.taxable,detail.taxableCents] ].map(([label,value])=>row(label??'',(value===null||value===undefined)?c.unknown:formatPhpCents(value)))}
   <Text variant="footnote" color="textSecondary">{c.total}</Text>
   <Button title={open?c.hide:c.show} variant="tonal" onPress={()=>setOpen(v=>!v)}/>
   {open&&<>
