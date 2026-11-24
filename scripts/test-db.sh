@@ -69,7 +69,7 @@ test "$READY" -eq 1
 "${PSQL[@]}" -f "$ROOT/supabase/tests/p0_4_tenant_race.sql"
 wait "$H"
 # Concurrent monetary postings use committed fictional monthly source fixtures.
-"${PSQL[@]}" -f "$ROOT/supabase/tests/ph_month_fixture.sql" >/dev/null
+"${PSQL[@]}" -1 -f "$ROOT/supabase/tests/ph_month_fixture.sql" >/dev/null
 "${PSQL[@]}" -f "$ROOT/supabase/tests/ph_money_race.sql" >"$WORK/money-a.log" 2>&1 & A=$!
 "${PSQL[@]}" -f "$ROOT/supabase/tests/ph_money_race.sql" >"$WORK/money-b.log" 2>&1 & B=$!
 FAIL=0
