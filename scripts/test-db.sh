@@ -81,4 +81,26 @@ cat "$WORK/p12-a.log" "$WORK/p12-b.log"
 test "$FAIL" -eq 0
 test "$(grep -h -c 'P12_REPLAY_OK' "$WORK"/p12-*.log | awk '{n+=$1} END{print n}')" -eq 2
 "${PSQL[@]}" -f "$ROOT/supabase/tests/p1_2_replay_race_verify.sql"
+# P1.4 same-receipt concurrency in disposable DB.
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p1_4_receipt_race_seed.sql" >/dev/null
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p1_4_receipt_race.sql" >"$WORK/p14-a.log" 2>&1 & A=$!
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p1_4_receipt_race.sql" >"$WORK/p14-b.log" 2>&1 & B=$!
+FAIL=0
+wait "$A" || FAIL=1
+wait "$B" || FAIL=1
+cat "$WORK/p14-a.log" "$WORK/p14-b.log"
+test "$FAIL" -eq 0
+test "$(grep -h -c P14_RECEIPT_OK "$WORK"/p14-*.log | awk '{n+=$1} END{print n}')" -eq 2
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p1_4_receipt_race_verify.sql"
+# P1.4 same-maternity contribution contention on throwaway cluster.
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p1_4_maternity_race_seed.sql" >/dev/null
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p1_4_maternity_race.sql" >"$WORK/maternity-a.log" 2>&1 & A=$!
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p1_4_maternity_race.sql" >"$WORK/maternity-b.log" 2>&1 & B=$!
+FAIL=0
+wait "$A" || FAIL=1
+wait "$B" || FAIL=1
+cat "$WORK/maternity-a.log" "$WORK/maternity-b.log"
+test "$FAIL" -eq 0
+test "$(grep -h -c P14_MATERNITY_OK "$WORK"/maternity-*.log | awk '{n+=$1} END{print n}')" -eq 2
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p1_4_maternity_race_verify.sql"
 echo "database tests passed"

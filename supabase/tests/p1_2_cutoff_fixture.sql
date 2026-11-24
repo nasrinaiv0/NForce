@@ -7,7 +7,7 @@ declare id uuid;begin
  perform app.ph_approve_payroll_evidence(o,id,'independent fictional review');
  return id;
 end $$;
-create function pg_temp.seed9(i int,freq text,first_date date,basis text,pay numeric,mwe boolean,benefit text, full_month boolean default false,leave_day date default null)
+create function pg_temp.seed9(i int,freq text,first_date date,basis text,pay numeric,mwe boolean,benefit text, full_month boolean default false,leave_day date default null, seal_next_day boolean default false)
 returns uuid language plpgsql as $$
 declare o uuid:=pg_temp.org9(i);e date:=case when full_month then (date_trunc('month',first_date)+interval '1 month - 1 day')::date else app.ph_period_end(first_date,freq) end;w date;d date;t uuid;j jsonb;ls jsonb;nonwork jsonb:='{}';
  keys jsonb:='[]';minw numeric;ord text;from_wage date;through_wage date;ded numeric;alloc date;other_used numeric:=0;leave_id uuid;
@@ -45,10 +45,11 @@ begin
  from generate_series(0,(e-(first_date-(extract(isodow from first_date)::int-1)))/7)k loop
   insert into app.accounting_period_manifest values(o,w,'Asia/Manila','fictional sealed weekly roster',pg_temp.u(1),false);
   ls:='[]';
-  for d in select w+k from generate_series(0,6)k where w+k between first_date and e loop
+  for d in select w+k from generate_series(0,6)k where w+k between first_date and (e+case when seal_next_day then 1 else 0 end) loop
    insert into app.accounting_roster_day values(o,w,pg_temp.u(2),d,480,0,'fictional policy');
    perform app.ph_record_workday(o,w,pg_temp.u(2),d,(d+time '08:00') at time zone 'Asia/Manila',
    jsonb_build_object(d::text,case when extract(isodow from d)<=5 then 'ordinary' else 'rest' end,(d+1)::text,'ordinary'),'fictional workday');
+   if d>e then continue;end if;
    if d=leave_day then
     nonwork:=nonwork||jsonb_build_object(d::text,jsonb_build_object('kind','paid_leave','reference','fictional approved paid leave','minutes',480,'requestId',leave_id));
    elsif extract(isodow from d)<=5 then

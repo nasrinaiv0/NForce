@@ -302,3 +302,24 @@ Before commit: parent exact-head checks and actual screenshots reviewed; canonic
 - DB 138197003461 passed. Before commit: actual worksheet against effective reviewed month, staff denial, weekly final revision and monthly concurrent replay assertions. Python Decimal independently verified PHP26542.45 and PHP27392.45. No hosted changes.
 
 - Before commit: add restricted ordinary full-day approved leave in all cutoff frequencies via original allocation and usage; guard late allocations, test missing evidence and no duplicate monthly salary. Do not claim full statutory eligibility. No hosted changes.
+
+## P1.4 — 2026-11-24
+Before commit: exact-head #21/#24 CI, preview and actual captures verified; document private ancillary statutory journals, reviewed receipts, exit payable, historical reconciliation and agency prep packets; preserve canonical ledger, block incomplete integrated compensation. No hosted changes.
+
+- Before fix commit: job 138202666122 failed at unterminated SQL literal. Rebuild approval validator without replacement interpolation; disambiguate aliases, add independent same-receipt race and exact receivable verification. No remote changes.
+
+- Before commit: static inspection of committed race fixture identified single-dollar helper delimiters; restore literal double-dollar delimiters before running the disposable DB race. No hosted changes.
+
+- Superseded job 138203152291 passed historical and agency packet tests, then found stale category identifier in statutory audit insert. Correct audit reference to v_category before commit; no hosted changes.
+
+- Exact-head database job 138203536718: statutory tests passed through over-reimbursement denial; concurrent receipt seed failed at malformed single-dollar function bodies. Before commit: repair only seed delimiters, retain two-connection test and verify exact head. No remote changes.
+
+- Verified generated fixture before follow-up commit: replacement-string expansion retained single dollars. Use literal callback replacement; inspect all three function definitions for double-dollar delimiters. No calculation change.
+
+- Before commit: reviewed RA11210 IRR, SSS maternity benefit/reimbursement, BIR RMC105-2019 and NIRC section32(B)(6) separation exemption and RA7641 retirement. Add private effective-ledger statutory summary, link exact independently reviewed exit journal to existing cutoff final calculation and immutable result, retain complete coverage/13th/contribution gates. Annual journal only handles tax adjustment; maternity already paid and employer reimbursements distinct, leave-period coverage and contribution reconciliation still block final close. Deterministic exit/refund and maternity summary tests. No hosted changes.
+
+- Before maternity reconciliation commit: exact-head database, 320 unit tests and web passed, direct preview READY but second same-SHA deployment CANCELED; browser artifact pending. Reviewed DOLE DA 01-2019, LA21-2026, RA11210 and SSS guidance. Reuse approved existing contribution and locked workday evidence; restrict stable monthly salary/no integrated allowances, no ordinary contribution allocation in touched months, every covered day locked/no work, no overlapping maternity. 13th calculation uses differential, not SSS advance. No actual contribution journal or chronological gap closure; no annual close enabled. Tests fictional. No hosted changes.
+
+- Before maternity integration commit: parent cbaf872 exact-head database/units/web passed and Vercel READY; native artifact pending. Add one existing statutory-journal category for reviewed monthly agency allocations, existing cutoff calculator handles monthly residual basic and agency shares with explicit maternity nonwork, complete chronological periods, 13th canonical accrual. No inferred agency split or actual remittance. Block linked corrections, annual close, external reports and nonmonthly/mixed cases. Add deterministic shared-month/no duplicate/chronological test. No remote changes.
+
+- Exact-head job 138211689390 reached shared allocation and failed stale expected EE9800 from prior no-split test. Before commit: correct expected 8425, preserve original fixture, factor shared setup for actual two-connection maternity journal retries, extend locked attendance with real synthetic weekday work after June14 and July consumption of one 13th accrual. Restrict journal to monthly opening and exact allocation month set. Decimal reference: EE8425, ER13750, gross-up journal22175, ordinary residual EE1375/ER2170, basic46967.74, differential26575, 13th6128.56; July net32671.01. No hosted changes.
