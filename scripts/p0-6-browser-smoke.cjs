@@ -92,6 +92,11 @@ const assert = require('node:assert/strict');
         await page.getByText('Monetary payroll review',{exact:true}).waitFor({timeout:30000});
         await page.getByText('₱611.25',{exact:true}).waitFor({timeout:10000});
         assert.equal(await page.getByText('Personal payroll',{exact:true}).count(),0,role);
+        await page.getByText('Payroll disputes',{exact:true}).waitFor({timeout:10000});
+        assert.equal(await page.getByText('Pending independent approval',{exact:true}).count(),1);
+        for(const button of await page.getByRole('button',{name:'Review case',exact:true}).all())assert.ok(await button.isDisabled());
+        await page.getByText('Payroll disputes',{exact:true}).scrollIntoViewIfNeeded();
+        await page.screenshot({path:'/tmp/nforce-browser/screenshots/role-'+role+'-disputes.png'});
       }else{
         await page.getByText('Personal payroll',{exact:true}).waitFor({timeout:30000});
         await page.getByText('My SSS',{exact:true}).waitFor({timeout:10000});
@@ -99,6 +104,7 @@ const assert = require('node:assert/strict');
         assert.equal(await page.getByText('Monetary payroll review',{exact:true}).count(),0,role);
         assert.equal(await page.getByText(/employer contribution|employer cost/i).count(),0,role);
         assert.equal(await page.getByText(/export csv/i).count(),0,role);
+        assert.equal(await page.getByText('Payroll disputes',{exact:true}).count(),0,role);
       }
       await page.screenshot({path:'/tmp/nforce-browser/screenshots/role-'+role+'-payroll.png',fullPage:true});
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2),role+' viewport overflow');
@@ -161,6 +167,13 @@ const assert = require('node:assert/strict');
       await page.getByText('Payslip history',{exact:true}).waitFor({timeout:30000});
       await page.getByText('₱26,542.45',{exact:true}).first().waitFor({timeout:10000});
       await page.screenshot({path:'/tmp/nforce-browser/screenshots/payslip-'+name+'.png',fullPage:true});
+      const evidence=page.getByRole('button',{name:'Show work and earnings evidence',exact:true});
+      await evidence.click();
+      const overtime=page.getByText('Regular work · Overtime',{exact:true});
+      await overtime.waitFor({timeout:10000});
+      // React Native web uses nested scroll containers; capture the actual visible evidence card.
+      await overtime.evaluate(el=>el.scrollIntoView({block:'start',inline:'nearest'}));
+      await page.screenshot({path:'/tmp/nforce-browser/screenshots/payslip-'+name+'-evidence.png'});
       assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+2),name+' no overflow');
       await page.close();
     }

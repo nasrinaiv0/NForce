@@ -26,7 +26,7 @@ create function app.ph_dispute_review_gate(p_org uuid) returns void language plp
 begin
  if auth.uid() is null or p_org is null then raise exception 'review unavailable' using errcode='42501';end if;
  perform app.accounting_tenant_lock(p_org);
- if not app.is_member(p_org) or not app.has_permission(p_org,'payroll.prepare') or not app.has_permission(p_org,'timesheet.lock') or not exists(select 1 from app.accounting_review_access a where a.organization_id=p_org and a.expires_at>clock_timestamp()) then raise exception 'review unavailable' using errcode='42501';end if;
+ if not app.is_member(p_org) or not app.has_role(p_org,auth.uid(),array['payroll','owner']) or not app.has_permission(p_org,'payroll.prepare') or not app.has_permission(p_org,'timesheet.lock') or not exists(select 1 from app.accounting_review_access a where a.organization_id=p_org and a.expires_at>clock_timestamp()) then raise exception 'review unavailable' using errcode='42501';end if;
 end $$;
 revoke all on function app.ph_dispute_review_gate(uuid) from public,anon,authenticated,service_role;
 create function public.payroll_dispute_review(p_organization_id uuid,p_period_start date)

@@ -79,6 +79,8 @@ reset role;
 select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
 set local role authenticated;
 select pg_temp.expect(public.payroll_dispute_review(pg_temp.org9(61),'2026-02-01')->'rows'->0->>'canPropose'='true','payroll maker may propose');
+select pg_temp.denied($$select public.payroll_dispute_propose(pg_temp.org9(61),'2026-02-01',pg_temp.u(4),1,0,'correction_required','fictional correction needed')$$,'42501','payroll cannot review own dispute');
+select pg_temp.denied($$select public.payroll_dispute_review(pg_temp.org9(62),'2026-02-01')$$,'42501','reviewer cannot bypass workspace review gate');
 select public.payroll_dispute_propose(pg_temp.org9(61),'2026-02-01',pg_temp.u(2),1,0,'correction_required','fictional correction needed');
 select pg_temp.denied($$select public.payroll_dispute_decide(pg_temp.org9(61),'2026-02-01',pg_temp.u(2),1,0,'approved','fictional independent check')$$,'42501','maker cannot approve own proposal');
 reset role;
