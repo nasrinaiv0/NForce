@@ -182,7 +182,7 @@ select pg_temp.act_as(pg_temp.u('hr'));
 do $$ begin
   perform public.offboard_member(pg_temp.m('sup'));
   perform pg_temp.expect((select status from public.memberships where id = pg_temp.m('sup')) = 'ended', 'HR can offboard an employee');
-  perform pg_temp.expect((select reports_to from public.memberships where id = pg_temp.m('staff')) = pg_temp.m('mgr'), 'their reports move up to the departing manager''s manager');
+  perform pg_temp.expect((select reports_to_user from public.org_directory(pg_temp.org()) where user_id = pg_temp.u('staff')) = pg_temp.u('mgr'), 'their reports move up to the departing manager''s manager');
 end $$;
 select pg_temp.raises($$ select public.offboard_member(pg_temp.m('owner')) $$, '42501', 'HR cannot offboard the owner (only an owner manages an owner)');
 select pg_temp.raises($$ select public.offboard_member(pg_temp.m('hr')) $$, '42501', 'nobody offboards themselves');
