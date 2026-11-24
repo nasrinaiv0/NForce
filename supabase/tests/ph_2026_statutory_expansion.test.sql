@@ -44,6 +44,13 @@ perform pg_temp.expect((j->>'net')::numeric=14925 and (j->>'taxable')::numeric=4
 perform pg_temp.expect((select count(*)=1 from app.ph_benefit_event where organization_id=pg_temp.org()),'quote never consumes benefit twice');
 end $$;
 select pg_temp.denied($$select app.ph_2026_cutoff_quote(pg_temp.org(),pg_temp.u(2),'2026-01-01','2026-01-15','2026-01-15','semi-monthly',9000,150,0,4000,false,600,30000,30000,30000,2,1,0,0,0,1,false,'reviewed fixture')$$,'P0001','MWE cannot be silently reclassified');
+-- Non-MWE rate revision; taxable ordinary wages and all allocated employee deductions.
+insert into app.ph_employment_history values(pg_temp.org(),pg_temp.u(2),'2026-02-01','2026-02-01Z','employed','daily',700,'site','wage','fictional revised daily rate',pg_temp.u(1));
+do $$ declare j jsonb; begin
+j:=app.ph_2026_cutoff_quote(pg_temp.org(),pg_temp.u(2),'2026-02-01','2026-02-15','2026-02-15','semi-monthly',10000,0,0,5000,false,600,30000,30000,30000,2,1,1225,0,0,1,false,'reviewed fixture');
+perform pg_temp.expect((j->>'gross')::numeric=15000 and (j->>'taxable')::numeric=13775 and (j->>'withholding')::numeric=503.70 and (j->>'net')::numeric=13271.30,'non-MWE semi-monthly quote');
+end $$;
+select pg_temp.denied($$select app.ph_2026_cutoff_quote('fb100000-0000-0000-0000-000000000099',pg_temp.u(2),'2026-02-01','2026-02-15','2026-02-15','semi-monthly',10000,0,0,5000,false,600,30000,30000,30000,2,1,1225,0,0,1,false,'reviewed fixture')$$,'42501','cross-tenant quote denied');
 \ir ph_month_fixture.sql
 select set_config('request.jwt.claim.sub',pg_temp.u(4)::text,true);
 select app.ph_post_month(pg_temp.mo(),pg_temp.u(2),'2025-01-01');
