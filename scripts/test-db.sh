@@ -70,4 +70,15 @@ test "$FAIL" -eq 0
 "${PSQL[@]}" -v benefit_key=benefit-race-a -f "$ROOT/supabase/tests/ph_benefit_race.sql" >/dev/null
 "${PSQL[@]}" -f "$ROOT/supabase/tests/ph_benefit_race_verify.sql"
 
+# P1.2 concurrent retry, same throwaway database, existing fictional auth users.
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p1_2_replay_race_seed.sql" >/dev/null
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p1_2_replay_race.sql" >"$WORK/p12-a.log" 2>&1 & A=$!
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p1_2_replay_race.sql" >"$WORK/p12-b.log" 2>&1 & B=$!
+FAIL=0
+wait "$A" || FAIL=1
+wait "$B" || FAIL=1
+cat "$WORK/p12-a.log" "$WORK/p12-b.log"
+test "$FAIL" -eq 0
+test "$(grep -h -c 'P12_REPLAY_OK' "$WORK"/p12-*.log | awk '{n+=$1} END{print n}')" -eq 2
+"${PSQL[@]}" -f "$ROOT/supabase/tests/p1_2_replay_race_verify.sql"
 echo "database tests passed"

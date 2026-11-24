@@ -289,3 +289,5 @@ Copy and complete for each meaningful change:
 ## 2026-11-24 — P1.2 revision candidate
 
 - Before commit: actual parent screenshot audit, separate PR21 test fix, canonical latest-cutoff revision replay, effective reports and internal CSV, mobile KPI layout. General entitlement and annual cutoff settlement remain gated. No hosted changes.
+
+- Initial #23 database job 138191355891 passed. Before commit: add explicit two-connection replay contention using disposable DB and verify one replacement/audit. No hosted changes.
