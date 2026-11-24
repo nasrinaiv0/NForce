@@ -90,12 +90,12 @@ select pg_temp.raises($$ select public.submit_request(pg_temp.org(), 'overtime',
 create temp table req (name text primary key, id uuid);
 grant all on req to authenticated;
 insert into req select 'leave', (public.submit_request(pg_temp.org(), 'leave', '{"leaveTypeId":"vacation","start":"2026-12-01","end":"2026-12-03","days":3}')).id;
-select pg_temp.raises($ select public.submit_timesheet(pg_temp.org(), '2026-11-16', 2400, 90) $, '42501', 'P0 blocks unverified live timesheet submission');
-select pg_temp.raises($ select public.submit_request(pg_temp.org(), 'timesheet', '{"periodStart":"2026-11-16","minutes":2400,"overtimeMinutes":90}') $, '42501', 'generic request cannot bypass accounting gate');
-do $ begin
+select pg_temp.raises($$ select public.submit_timesheet(pg_temp.org(), '2026-11-16', 2400, 90) $$, '42501', 'P0 blocks unverified live timesheet submission');
+select pg_temp.raises($$ select public.submit_request(pg_temp.org(), 'timesheet', '{"periodStart":"2026-11-16","minutes":2400,"overtimeMinutes":90}') $$, '42501', 'generic request cannot bypass accounting gate');
+do $$ begin
   perform pg_temp.expect((select count(*) from public.timesheets) = 0, 'denied submission leaves no sheet');
   perform pg_temp.expect((select count(*) from public.approval_requests where kind = 'timesheet') = 0, 'denied submission leaves no request');
-end $;
+end $$;
 reset role;
 
 -- ---------------------------------------------------------------- notifications
