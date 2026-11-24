@@ -78,3 +78,16 @@ export function parsePersonalPayrollDetail(raw: unknown, organization: string, u
  parsePersonalPayroll(d.summary,organization,user,period);
  return d;
 }
+
+/** Display-only cent rounding; exact source amounts and posted totals are unchanged. */
+export function formatPayslipDecimal(value:string) {
+ const [whole='0',fraction='']=value.split('.');
+ const rounded=BigInt(whole)*100n+BigInt(fraction.padEnd(3,'0').slice(0,2))+(Number(fraction.padEnd(3,'0')[2])>=5?1n:0n);
+ return formatPhpCents(rounded.toString());
+}
+export function formatPayslipInstant(value:string,locale:'en'|'fil'|'es'):string|null {
+ if(!/(?:Z|[+-]\d{2}:\d{2})$/i.test(value))return null;
+ const date=new Date(value);
+ if(!Number.isFinite(date.getTime()))return null;
+ return new Intl.DateTimeFormat(locale==='en'?'en-PH':locale==='fil'?'fil-PH':'es-ES',{timeZone:'Asia/Manila',year:'numeric',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit'}).format(date);
+}

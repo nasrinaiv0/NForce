@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseAccountingSnapshot, parsePersonalPayroll, parsePersonalPayrollDetail } from '@/data/accountingReview';
+import { parseAccountingSnapshot, parsePersonalPayroll, parsePersonalPayrollDetail, formatPayslipDecimal, formatPayslipInstant } from '@/data/accountingReview';
 
 const org = 'fb100000-0000-4000-8000-000000000001';
 const snapshot = { organizationId: org, periodStart: '2025-01-06', scope: 'self', source: 'locked-original-ph-v4', employeeCount: 1, workedSeconds: '32400.125', overtimeSeconds: '3600.125', lines: [{ code: 'RH_ND', seconds: '25200' }, { code: 'RH', seconds: '3600' }, { code: 'RH_OT', seconds: '3600.125' }] };
@@ -57,4 +57,17 @@ describe('extended payslip privacy and amount sources',()=>{
   expect(()=>parsePersonalPayrollDetail({...personalDetail,sssRegularCents:'100000'},org,employee,'2026-02-01')).toThrow();
  });
  it('rejects simultaneous recorded and calculated amounts',()=>expect(()=>parsePersonalPayrollDetail({...personalDetail,items:[{...personalDetail.items[0],recordedAmount:'100',calculatedAmount:'100'}]},org,employee,'2026-02-01')).toThrow());
+});
+
+describe('display-only payslip amounts and Manila time',()=>{
+ it('rounds exact decimal values without floating point',()=>{
+  expect(formatPayslipDecimal('1150.684931506849315')).toBe('₱1,150.68');
+  expect(formatPayslipDecimal('99999999999999999999.995')).toBe('₱100,000,000,000,000,000,000.00');
+  expect(formatPayslipDecimal('0')).toBe('₱0.00');
+ });
+ it('uses explicit Manila zone and rejects missing offsets',()=>{
+  expect(formatPayslipInstant('2026-02-02T01:00:00Z','en')).toBe(formatPayslipInstant('2026-02-02T09:00:00+08:00','en'));
+  expect(formatPayslipInstant('2026-02-02T09:00:00','en')).toBeNull();
+  expect(formatPayslipInstant('invalid','en')).toBeNull();
+ });
 });
